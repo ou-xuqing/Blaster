@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "Weapon.generated.h"
 
+class ACasing;
 class UWidgetComponent;
 class USphereComponent;
 
@@ -37,6 +38,9 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	//IK用
 	USkeletalMeshComponent* GetWeaponMesh(){return WeaponMesh;}
+
+	virtual void WeaponFire(const FVector& HitTarget);
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -61,5 +65,11 @@ private:
 
 	UFUNCTION()
 	void OnRep_WeaponState();
+
+	UPROPERTY(EditAnywhere,Category="Weapon")
+	TObjectPtr<UAnimationAsset> FireAnimation;
+
+	UPROPERTY(EditAnywhere,Category="Weapon | Shell")
+	TSubclassOf<ACasing> CasingClass;
 };
 

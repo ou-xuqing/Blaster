@@ -3,6 +3,7 @@
 
 #include "Weapon/Weapon.h"
 
+#include "BulletActor/Casing.h"
 #include "Character/BlasterCharacter.h"
 #include "Components/SphereComponent.h"
 #include "Components/WidgetComponent.h"
@@ -12,7 +13,7 @@
 AWeapon::AWeapon()
 {
 	PrimaryActorTick.bCanEverTick = false;
-	//服务器控制武器的碰撞拾取操作
+	//服务器控制武器的碰撞拾取操作，如果不设bReplicates，则weapon在所有机器上都是HasAuthority，设了bReplicates之后，只有在服务器中才是HasAuthority
 	bReplicates = true;
 
 	WeaponMesh = CreateDefaultSubobject<USkeletalMeshComponent>("WeaponMesh");
@@ -79,6 +80,22 @@ void AWeapon::OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActo
 	}
 }
 
+//本地执行，因为在多播中调用
+void AWeapon::WeaponFire(const FVector& HitTarget)
+{
+	if (FireAnimation)
+	{
+		WeaponMesh->PlayAnimation(FireAnimation,false);
+	}
+	if (CasingClass)
+	{
+		const FTransform AmmoLocation = WeaponMesh->GetSocketTransform(FName("AmmoEject"));
+		if (GetWorld())
+		{
+			GetWorld()->SpawnActor<ACasing>(CasingClass,AmmoLocation.GetLocation(),AmmoLocation.GetRotation().Rotator());
+		}
+	}
+}
 
 void AWeapon::SetWeaponState(EWeaponState InState)
 {

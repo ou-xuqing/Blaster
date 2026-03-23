@@ -37,9 +37,16 @@ void ABlasterPlayerController::SetupInputComponent()
 	EnhancedInputComponent->BindAction(PickupAction,ETriggerEvent::Triggered,this,&ABlasterPlayerController::Pickup);
 	EnhancedInputComponent->BindAction(CrouchAction,ETriggerEvent::Started,this,&ABlasterPlayerController::Crouch);
 
-	//按住开火
+	/*
+	 * 按住瞄准,因为使用bool去控制动画所以会出现start和complete组合变成按住的表现
+	 * 对应下面的开火，控制的是montage播放，所以不会出现组合变成按住的表现
+	 */
 	EnhancedInputComponent->BindAction(AimingAction,ETriggerEvent::Started,this,&ABlasterPlayerController::ToAiming);
 	EnhancedInputComponent->BindAction(AimingAction,ETriggerEvent::Completed,this,&ABlasterPlayerController::LeaveAiming);
+
+	//开火
+	EnhancedInputComponent->BindAction(ShootAction,ETriggerEvent::Started,this,&ABlasterPlayerController::Shooting);
+	EnhancedInputComponent->BindAction(ShootAction,ETriggerEvent::Completed,this,&ABlasterPlayerController::StopShoot);
 }
 
 void ABlasterPlayerController::Move(const FInputActionValue& InputActionValue)
@@ -127,6 +134,30 @@ void ABlasterPlayerController::LeaveAiming(const FInputActionValue& InputActionV
 		if (BlasterCharacter)
 		{
 			BlasterCharacter->AimingButtonReleased();
+		}
+	}
+}
+
+void ABlasterPlayerController::Shooting(const FInputActionValue& InputActionValue)
+{
+	if (APawn* ControlPawn = GetPawn())
+	{
+		ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(ControlPawn);
+		if (BlasterCharacter)
+		{
+			BlasterCharacter->ShootButtonPressed();
+		}
+	}
+}
+
+void ABlasterPlayerController::StopShoot(const FInputActionValue& InputActionValue)
+{
+	if (APawn* ControlPawn = GetPawn())
+	{
+		ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(ControlPawn);
+		if (BlasterCharacter)
+		{
+			BlasterCharacter->ShootButtonReleased();
 		}
 	}
 }

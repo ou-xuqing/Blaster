@@ -39,7 +39,8 @@ private:
 	TObjectPtr<UInputAction> CrouchAction;
 	UPROPERTY(EditAnywhere,Category="Input")
 	TObjectPtr<UInputAction> AimingAction;
-
+	UPROPERTY(EditAnywhere,Category="Input")
+	TObjectPtr<UInputAction> ShootAction;
 	
 	void Move(const FInputActionValue& InputActionValue);
 	void JumpMove(const FInputActionValue& InputActionValue);
@@ -48,4 +49,6 @@ private:
 	void Crouch(const FInputActionValue& InputActionValue);
 	void ToAiming(const FInputActionValue& InputActionValue);
 	void LeaveAiming(const FInputActionValue& InputActionValue);
+	void Shooting(const FInputActionValue& InputActionValue);
+	void StopShoot(const FInputActionValue& InputActionValue);
 };

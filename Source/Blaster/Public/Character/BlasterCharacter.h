@@ -53,6 +53,10 @@ public:
 
 	void AimingButtonReleased();
 
+	void ShootButtonPressed();
+
+	void ShootButtonReleased();
+
 	virtual void Jump() override;
 	
 	/*
@@ -71,6 +75,8 @@ public:
 	AWeapon* GetEquippedWeapon();
 
 	ETurningInPlace GetTurningInPlace() const {return TurningInPlace;}
+
+	void PlayShootingMontage(bool bInAiming);
 	//
 protected:
 	virtual void BeginPlay() override;
@@ -103,4 +109,7 @@ private:
 	FRotator StartRotation;
 	//用来转身
 	float InterpYaw;
+
+	UPROPERTY(EditAnywhere,Category="Combat")
+	TObjectPtr<UAnimMontage> ShootingMontage;
 };

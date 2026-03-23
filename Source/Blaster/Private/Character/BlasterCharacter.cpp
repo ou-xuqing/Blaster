@@ -53,6 +53,21 @@ ABlasterCharacter::ABlasterCharacter()
 	SetMinNetUpdateFrequency(33);
 }
 
+//本地执行
+void ABlasterCharacter::PlayShootingMontage(bool bInAiming)
+{
+	if (CombatComponent && CombatComponent->EquippedWeapon)
+	{
+		UAnimInstance* AnimInstance= GetMesh()->GetAnimInstance();
+		if (AnimInstance && ShootingMontage)
+		{
+			AnimInstance->Montage_Play(ShootingMontage);
+			FName SectionName = bInAiming ? FName("RifleHip") : FName("RifleAim");
+			//Montage通过Section分段
+			AnimInstance->Montage_JumpToSection(SectionName);
+		}
+	}
+}
 
 void ABlasterCharacter::BeginPlay()
 {
@@ -184,6 +199,22 @@ void ABlasterCharacter::AimingButtonReleased()
 	if (CombatComponent)
 	{
 		CombatComponent->SetAiming(false);
+	}
+}
+
+void ABlasterCharacter::ShootButtonPressed()
+{
+	if (CombatComponent && CombatComponent->EquippedWeapon)
+	{
+		CombatComponent->ShootButtonPress(true);
+	}
+}
+
+void ABlasterCharacter::ShootButtonReleased()
+{
+	if (CombatComponent && CombatComponent->EquippedWeapon)
+	{
+		CombatComponent->ShootButtonPress(false);
 	}
 }
 
