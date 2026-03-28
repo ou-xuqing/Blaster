@@ -63,8 +63,17 @@ private:
 	float AO_Pitch = 0.f;
 
 	UPROPERTY(BlueprintReadOnly,Category="Movement",meta=(AllowPrivateAccess=true))
+	bool bRotateRootBone;
+
+	UPROPERTY(BlueprintReadOnly,Category="Movement",meta=(AllowPrivateAccess=true))
 	FTransform LeftHandTransform;
 
 	UPROPERTY(BlueprintReadOnly,Category="Movement",meta=(AllowPrivateAccess=true))
 	ETurningInPlace TurningInPlace;
+
+	UPROPERTY(BlueprintReadOnly,Category="Movement",meta=(AllowPrivateAccess=true))
+	FRotator RightHandRotation;
+
+	UPROPERTY(BlueprintReadOnly,Category="Movement",meta=(AllowPrivateAccess=true))
+	bool bLocallyControlled = false;
 };

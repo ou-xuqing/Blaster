@@ -24,22 +24,22 @@ public:
 
 private:
 	
-	UPROPERTY(EditAnywhere,Category="Input")
+	UPROPERTY(EditDefaultsOnly,Category="Input")
 	TObjectPtr<UInputMappingContext> InputContext;
 	
-	UPROPERTY(EditAnywhere,Category="Input")
+	UPROPERTY(EditDefaultsOnly,Category="Input")
 	TObjectPtr<UInputAction> MoveAction;
-	UPROPERTY(EditAnywhere,Category="Input")
+	UPROPERTY(EditDefaultsOnly,Category="Input")
 	TObjectPtr<UInputAction> JumpAction;
-	UPROPERTY(EditAnywhere,Category="Input")
+	UPROPERTY(EditDefaultsOnly,Category="Input")
 	TObjectPtr<UInputAction> TurnAction;
-	UPROPERTY(EditAnywhere,Category="Input")
+	UPROPERTY(EditDefaultsOnly,Category="Input")
 	TObjectPtr<UInputAction> PickupAction;
-	UPROPERTY(EditAnywhere,Category="Input")
+	UPROPERTY(EditDefaultsOnly,Category="Input")
 	TObjectPtr<UInputAction> CrouchAction;
-	UPROPERTY(EditAnywhere,Category="Input")
+	UPROPERTY(EditDefaultsOnly,Category="Input")
 	TObjectPtr<UInputAction> AimingAction;
-	UPROPERTY(EditAnywhere,Category="Input")
+	UPROPERTY(EditDefaultsOnly,Category="Input")
 	TObjectPtr<UInputAction> ShootAction;
 	
 	void Move(const FInputActionValue& InputActionValue);

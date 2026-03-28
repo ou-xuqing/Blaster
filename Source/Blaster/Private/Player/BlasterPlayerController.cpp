@@ -31,22 +31,48 @@ void ABlasterPlayerController::SetupInputComponent()
 		Subsystem->AddMappingContext(InputContext,0);
 	}
 	UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent);
-	EnhancedInputComponent->BindAction(MoveAction,ETriggerEvent::Triggered,this,&ABlasterPlayerController::Move);
-	EnhancedInputComponent->BindAction(TurnAction,ETriggerEvent::Triggered,this,&ABlasterPlayerController::TurnMove);
-	EnhancedInputComponent->BindAction(JumpAction,ETriggerEvent::Started,this,&ABlasterPlayerController::JumpMove);
-	EnhancedInputComponent->BindAction(PickupAction,ETriggerEvent::Triggered,this,&ABlasterPlayerController::Pickup);
-	EnhancedInputComponent->BindAction(CrouchAction,ETriggerEvent::Started,this,&ABlasterPlayerController::Crouch);
+	if (EnhancedInputComponent)
+	{
+		if (MoveAction)
+		{
+			EnhancedInputComponent->BindAction(MoveAction,ETriggerEvent::Triggered,this,&ABlasterPlayerController::Move);
+		}
+		if (TurnAction)
+		{
+			EnhancedInputComponent->BindAction(TurnAction,ETriggerEvent::Triggered,this,&ABlasterPlayerController::TurnMove);
+		}
+		if (JumpAction)
+		{
+			EnhancedInputComponent->BindAction(JumpAction,ETriggerEvent::Started,this,&ABlasterPlayerController::JumpMove);
+		}
+		if (PickupAction)
+		{
+			EnhancedInputComponent->BindAction(PickupAction,ETriggerEvent::Started,this,&ABlasterPlayerController::Pickup);
+		}
+		if (CrouchAction)
+		{
+			EnhancedInputComponent->BindAction(CrouchAction,ETriggerEvent::Started,this,&ABlasterPlayerController::Crouch);
+		}
+		
 
-	/*
-	 * 按住瞄准,因为使用bool去控制动画所以会出现start和complete组合变成按住的表现
-	 * 对应下面的开火，控制的是montage播放，所以不会出现组合变成按住的表现
-	 */
-	EnhancedInputComponent->BindAction(AimingAction,ETriggerEvent::Started,this,&ABlasterPlayerController::ToAiming);
-	EnhancedInputComponent->BindAction(AimingAction,ETriggerEvent::Completed,this,&ABlasterPlayerController::LeaveAiming);
+		/*
+		 * 按住瞄准,因为使用bool去控制动画所以会出现start和complete组合变成按住的表现
+		 * 对应下面的开火，控制的是montage播放，所以不会出现组合变成按住的表现
+		 */
+		if (AimingAction)
+		{
+			EnhancedInputComponent->BindAction(AimingAction,ETriggerEvent::Started,this,&ABlasterPlayerController::ToAiming);
+			EnhancedInputComponent->BindAction(AimingAction,ETriggerEvent::Completed,this,&ABlasterPlayerController::LeaveAiming);
+		}
+		
+		//开火
+		if (ShootAction)
+		{
+			EnhancedInputComponent->BindAction(ShootAction,ETriggerEvent::Started,this,&ABlasterPlayerController::Shooting);
+			EnhancedInputComponent->BindAction(ShootAction,ETriggerEvent::Completed,this,&ABlasterPlayerController::StopShoot);			
+		}
+	}
 
-	//开火
-	EnhancedInputComponent->BindAction(ShootAction,ETriggerEvent::Started,this,&ABlasterPlayerController::Shooting);
-	EnhancedInputComponent->BindAction(ShootAction,ETriggerEvent::Completed,this,&ABlasterPlayerController::StopShoot);
 }
 
 void ABlasterPlayerController::Move(const FInputActionValue& InputActionValue)

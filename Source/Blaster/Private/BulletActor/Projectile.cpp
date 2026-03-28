@@ -3,6 +3,8 @@
 
 #include "BulletActor/Projectile.h"
 
+#include "Blaster/Blaster.h"
+#include "Character/BlasterCharacter.h"
 #include "Components/BoxComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -20,6 +22,7 @@ AProjectile::AProjectile()
 	CollisionBox->SetCollisionResponseToAllChannels(ECR_Ignore);
 	CollisionBox->SetCollisionResponseToChannel(ECC_WorldStatic,ECR_Block);
 	CollisionBox->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);
+	CollisionBox->SetCollisionResponseToChannel(ECC_SkeletalMesh,ECR_Block);
 	SetRootComponent(CollisionBox);
 	
 	ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>("ProjectileMovementComponent");
@@ -59,6 +62,10 @@ void AProjectile::Tick(float DeltaTime)
 
 void AProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse,const FHitResult& Hit)
 {
+	if (ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(Hit.GetActor()))
+	{
+		BlasterCharacter->MultiPlayHitReactMontage();
+	}
 	//标记为复制的Actor，在摧毁时会广播到服务器和所有客户端，所以特效可以跟着摧毁的函数来产生，这样节省网络资源
 	Destroy();
 }

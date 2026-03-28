@@ -41,6 +41,22 @@ public:
 
 	virtual void WeaponFire(const FVector& HitTarget);
 
+
+	//准星贴图
+	UPROPERTY(EditAnywhere,Category="Crosshair")
+	TObjectPtr<UTexture2D> CrosshairCenter;
+	UPROPERTY(EditAnywhere,Category="Crosshair")
+	TObjectPtr<UTexture2D> CrosshairLeft;
+	UPROPERTY(EditAnywhere,Category="Crosshair")
+	TObjectPtr<UTexture2D> CrosshairRight;
+	UPROPERTY(EditAnywhere,Category="Crosshair")
+	TObjectPtr<UTexture2D> CrosshairTop;
+	UPROPERTY(EditAnywhere,Category="Crosshair")
+	TObjectPtr<UTexture2D> CrosshairBottom;
+
+	float GetZoomFOV() const {return ZoomFOV;}
+	float GetZoomInterpSpeed() const {return ZoomInterpSpeed;}
+	
 protected:
 	virtual void BeginPlay() override;
 
@@ -71,5 +87,10 @@ private:
 
 	UPROPERTY(EditAnywhere,Category="Weapon | Shell")
 	TSubclassOf<ACasing> CasingClass;
+
+	UPROPERTY(EditDefaultsOnly,Category="Weapon | Aim")
+	float ZoomFOV = 40.f;
+	UPROPERTY(EditDefaultsOnly,Category="Weapon | Aim")
+	float ZoomInterpSpeed = 20.f;
 };
 

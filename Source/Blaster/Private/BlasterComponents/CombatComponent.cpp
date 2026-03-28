@@ -3,11 +3,14 @@
 
 #include "BlasterComponents/CombatComponent.h"
 
+#include "Camera/CameraComponent.h"
 #include "Character/BlasterCharacter.h"
 #include "Engine/SkeletalMeshSocket.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "HUD/BlasterHUD.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/BlasterPlayerController.h"
 #include "Weapon/Weapon.h"
 
 UCombatComponent::UCombatComponent()
@@ -18,13 +21,86 @@ UCombatComponent::UCombatComponent()
 void UCombatComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	BlasterCharacter->GetCharacterMovement()->MaxWalkSpeed = BaseWalkSpeed;
+	if (BlasterCharacter)
+	{
+		BlasterCharacter->GetCharacterMovement()->MaxWalkSpeed = BaseWalkSpeed;
+		DefaultFOV = BlasterCharacter->GetCamera()->FieldOfView;
+		CurrentFOV = DefaultFOV;
+	}
+
 }
 
 void UCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	if (BlasterCharacter && BlasterCharacter->IsLocallyControlled())
+	{
+		SetHUDCrosshair(DeltaTime);
+		FHitResult HitResult;
+		TraceUnderCrosshair(HitResult);
+		AimTarget = HitResult.ImpactPoint;
+		InterpFOV(DeltaTime);
+	}
 
+}
+
+//TODO::可能的优化，不要每帧都传CrosshairPackage，一个想法在OnRep中修改Package;;每个武器应该有不同的扩散
+void UCombatComponent::SetHUDCrosshair(float DeltaTime)
+{
+	if (BlasterCharacter == nullptr || BlasterCharacter->Controller == nullptr) return;
+
+	if (BlasterPlayerController == nullptr)
+	{
+		BlasterPlayerController = Cast<ABlasterPlayerController>(BlasterCharacter->GetController());
+	}
+	if (BlasterHUD == nullptr)
+	{
+		BlasterHUD = Cast<ABlasterHUD>(BlasterPlayerController->GetHUD());
+	}
+	if (BlasterHUD)
+	{
+		if (EquippedWeapon)
+		{
+			CrosshairPackage.CrosshairCenter = EquippedWeapon->CrosshairCenter;
+			CrosshairPackage.CrosshairBottom = EquippedWeapon->CrosshairBottom;
+			CrosshairPackage.CrosshairLeft = EquippedWeapon->CrosshairLeft;
+			CrosshairPackage.CrosshairRight = EquippedWeapon->CrosshairRight;
+			CrosshairPackage.CrosshairTop = EquippedWeapon->CrosshairTop;			
+		}else
+		{
+			CrosshairPackage.CrosshairCenter = nullptr;
+			CrosshairPackage.CrosshairBottom = nullptr;
+			CrosshairPackage.CrosshairLeft = nullptr;
+			CrosshairPackage.CrosshairRight = nullptr;
+			CrosshairPackage.CrosshairTop = nullptr;	
+		}
+		//准星扩散
+		FVector2D InputRange(0.f,BlasterCharacter->GetCharacterMovement()->MaxWalkSpeed);
+		FVector2D OutRange(0.f,1.f);
+		FVector Velocity = BlasterCharacter->GetCharacterMovement()->Velocity;
+		Velocity.Z = 0.f;
+		CrosshairVelocityFactor = FMath::GetMappedRangeValueClamped(InputRange,OutRange,Velocity.Size());
+		if (BlasterCharacter->GetCharacterMovement()->IsFalling())
+		{
+			CrosshairJumpFactor = FMath::FInterpTo(CrosshairJumpFactor,2.f,DeltaTime,1.f);
+		}else
+		{
+			CrosshairJumpFactor = FMath::FInterpTo(CrosshairJumpFactor,0.f,DeltaTime,2.f);
+		}
+		if (bIsAiming)
+		{
+			CrosshairAimFactor = FMath::FInterpTo(CrosshairAimFactor,0.58f,DeltaTime,30.f);
+		}else
+		{
+			CrosshairAimFactor = FMath::FInterpTo(CrosshairAimFactor,0.f,DeltaTime,30.f);
+		}
+		//按下开火时直接变大，然后一直变小
+		CrosshairFireFactor = FMath::FInterpTo(CrosshairFireFactor,0.f,DeltaTime,30.f);
+		
+		CrosshairPackage.CrosshairSpread = 0.5f + CrosshairJumpFactor + CrosshairVelocityFactor - CrosshairAimFactor + CrosshairFireFactor;
+		
+		BlasterHUD->SetCrosshairPackage(CrosshairPackage);
+	}
 }
 
 void UCombatComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
@@ -62,6 +138,10 @@ void UCombatComponent::ShootButtonPress(bool bPress)
 		FHitResult HitResult;
 		TraceUnderCrosshair(HitResult);
 		ServerWeaponFire(HitResult.ImpactPoint);
+		if (EquippedWeapon)
+		{
+			CrosshairFireFactor = 1.25f;
+		}
 	}
 }
 
@@ -88,6 +168,11 @@ AWeapon* UCombatComponent::GetEquippedWeapon()
 	return nullptr;
 }
 
+FVector UCombatComponent::GetAimTarget()
+{
+	return AimTarget;
+}
+
 //先让按下瞄准的客户端看到变化，然后再同步，而不是等服务器同步，因为网卡时会很顿
 void UCombatComponent::SetAiming(bool bInAiming)
 {
@@ -102,12 +187,28 @@ void UCombatComponent::SetAiming(bool bInAiming)
 	}
 }
 
+void UCombatComponent::InterpFOV(float DeltaTime)
+{
+	if (EquippedWeapon == nullptr) return;
+	if (bIsAiming)
+	{
+		CurrentFOV = FMath::FInterpTo(CurrentFOV,EquippedWeapon->GetZoomFOV(),DeltaTime,EquippedWeapon->GetZoomInterpSpeed());
+	}else
+	{
+		CurrentFOV = FMath::FInterpTo(CurrentFOV,DefaultFOV,DeltaTime,EquippedWeapon->GetZoomInterpSpeed());
+	}
+	if (BlasterCharacter->GetCamera())
+	{
+		BlasterCharacter->GetCamera()->SetFieldOfView(CurrentFOV);
+	}
+}
+
 void UCombatComponent::TraceUnderCrosshair(FHitResult& HitResult)
 {
 	FVector2D ViewPortSize;
 	bool bScreenToWorld = false;
-	FVector CrosshairWorldPosition;
-	FVector CrosshairWorldDirection;
+	FVector CrosshairWorldPosition	= FVector();
+	FVector CrosshairWorldDirection	= FVector();
 	if (GEngine && GEngine->GameViewport)
 	{
 		GEngine->GameViewport->GetViewportSize(ViewPortSize);
@@ -126,14 +227,27 @@ void UCombatComponent::TraceUnderCrosshair(FHitResult& HitResult)
 	{
 		//射线检测
 		FVector Start = CrosshairWorldPosition;
+		if (BlasterCharacter)
+		{
+			//把起点变成角色前面，这样就不会瞄准背后的敌人
+			float DistanceToCharacter = (BlasterCharacter->GetActorLocation() - CrosshairWorldPosition).Size();
+			//100.f是防止摄像机过近锁自己，也防止锁旁边的人
+			Start += CrosshairWorldDirection * (DistanceToCharacter + 100.f);
+		}
 		FVector End = Start + CrosshairWorldDirection * 100000.0f;
-		GetWorld()->LineTraceSingleByChannel(HitResult,Start,End,ECC_Vehicle);
+		GetWorld()->LineTraceSingleByChannel(HitResult,Start,End,ECC_Visibility);
 		if (!HitResult.bBlockingHit)
 		{
 			HitResult.ImpactPoint = End;
 		}
+		if (HitResult.GetActor() && HitResult.GetActor()->Implements<UPlayerInterface>())
+		{
+			CrosshairPackage.CrosshairColor = FLinearColor::Red;
+		}else
+		{
+			CrosshairPackage.CrosshairColor = FLinearColor::White;
+		}
 	}
-	
 }
 
 void UCombatComponent::ServerSetAiming_Implementation(bool bInAiming)
