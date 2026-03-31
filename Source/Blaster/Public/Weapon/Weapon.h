@@ -35,13 +35,14 @@ public:
 
 	void SetWeaponState(EWeaponState InState);
 
+	void DropWeapon();
+	
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	//IK用
 	USkeletalMeshComponent* GetWeaponMesh(){return WeaponMesh;}
 
 	virtual void WeaponFire(const FVector& HitTarget);
-
-
+	
 	//准星贴图
 	UPROPERTY(EditAnywhere,Category="Crosshair")
 	TObjectPtr<UTexture2D> CrosshairCenter;
@@ -56,6 +57,11 @@ public:
 
 	float GetZoomFOV() const {return ZoomFOV;}
 	float GetZoomInterpSpeed() const {return ZoomInterpSpeed;}
+
+	UPROPERTY(EditDefaultsOnly,Category="Weapon | AutoMatic")
+	float FireDelay = 0.15f;
+	UPROPERTY(EditDefaultsOnly,Category="Weapon | AutoMatic")
+	bool bAutoMaticFire = true;
 	
 protected:
 	virtual void BeginPlay() override;

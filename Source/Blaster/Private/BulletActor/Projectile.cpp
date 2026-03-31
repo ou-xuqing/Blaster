@@ -62,10 +62,7 @@ void AProjectile::Tick(float DeltaTime)
 
 void AProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse,const FHitResult& Hit)
 {
-	if (ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(Hit.GetActor()))
-	{
-		BlasterCharacter->MultiPlayHitReactMontage();
-	}
+
 	//标记为复制的Actor，在摧毁时会广播到服务器和所有客户端，所以特效可以跟着摧毁的函数来产生，这样节省网络资源
 	Destroy();
 }

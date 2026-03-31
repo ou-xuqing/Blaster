@@ -1,7 +1,11 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "HUD/BlasterHUD.h"
+#include "UI/HUD/BlasterHUD.h"
+
+#include "Blueprint/UserWidget.h"
+#include "UI/Controller/OverlayUserWidgetController.h"
+#include "UI/Widget/BlasterUserWidget.h"
 
 void ABlasterHUD::DrawHUD()
 {
@@ -46,4 +50,28 @@ void ABlasterHUD::DrawCrossHairInCenter(UTexture2D* Texture, FVector2D Center,FV
 	const FVector2D TextureDrawPosition = FVector2D(Center.X - (TextureWidth / 2.0f) + Spread.X, Center.Y - (TextureHeight / 2.0f) + Spread.Y);
 	DrawTexture(Texture,TextureDrawPosition.X,TextureDrawPosition.Y,
 		TextureWidth,TextureHeight,0.f,0.f,1.f,1.f,CrosshairColor);
+}
+
+void ABlasterHUD::InitOverlayWidget(APlayerController* InPlayerController,ABlasterCharacter* InBlasterCharacter)
+{
+	if (OverlayWidgetControllerClass && OverlayWidgetClass)
+	{
+		if (OverlayWidgetController == nullptr)
+		{
+			OverlayWidgetController = NewObject<UOverlayUserWidgetController>(this,OverlayWidgetControllerClass);
+			OverlayWidgetController->SetControllerParams(InPlayerController,InBlasterCharacter);
+			OverlayWidgetController->BindCallbacksToDependencies();
+		}else
+		{
+			OverlayWidgetController->SetControllerParams(InPlayerController,InBlasterCharacter);
+			OverlayWidgetController->BindCallbacksToDependencies();
+		}
+
+		if (OverlayWidget == nullptr)
+		{
+			OverlayWidget =Cast<UBlasterUserWidget>(CreateWidget(GetWorld(),OverlayWidgetClass));
+			OverlayWidget->SetWidgetController(OverlayWidgetController);
+			OverlayWidget->AddToViewport();			
+		}
+	}
 }

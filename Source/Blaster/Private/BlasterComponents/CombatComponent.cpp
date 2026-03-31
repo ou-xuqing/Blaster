@@ -7,7 +7,7 @@
 #include "Character/BlasterCharacter.h"
 #include "Engine/SkeletalMeshSocket.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "HUD/BlasterHUD.h"
+#include "UI/HUD/BlasterHUD.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/BlasterPlayerController.h"
@@ -42,6 +42,101 @@ void UCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 		InterpFOV(DeltaTime);
 	}
 
+}
+
+void UCombatComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(UCombatComponent,EquippedWeapon);
+	DOREPLIFETIME(UCombatComponent,bIsAiming);
+}
+
+//只会在服务器中执行,因为只会在服务器中调用这个函数
+void UCombatComponent::EquipWeapon(AWeapon* InWeapon)
+{
+	if (BlasterCharacter == nullptr || InWeapon == nullptr) return;
+	//只在服务器中设置
+	EquippedWeapon = InWeapon;
+	//设置武器状态
+	EquippedWeapon->SetWeaponState(EWeaponState::Ews_Equipped);
+	const  USkeletalMeshSocket* RightHandSocket = BlasterCharacter->GetMesh()->GetSocketByName(FName("RightHandSocket"));
+	if (RightHandSocket)
+	{
+		RightHandSocket->AttachActor(EquippedWeapon, BlasterCharacter->GetMesh());
+	}
+	EquippedWeapon->ShowPickupText(false);
+	BlasterCharacter->bUseControllerRotationYaw = true;
+	BlasterCharacter->GetCharacterMovement()->bOrientRotationToMovement = false;
+	//设置武器拥有者
+	EquippedWeapon->SetOwner(BlasterCharacter);
+}
+
+AWeapon* UCombatComponent::GetEquippedWeapon()
+{
+	if (EquippedWeapon)
+	{
+		return EquippedWeapon;
+	}
+	return nullptr;
+}
+
+void UCombatComponent::Fire()
+{
+	if (bCanFire)
+	{
+		bCanFire = false;
+		ServerWeaponFire(AimTarget);
+		if (EquippedWeapon)
+		{
+			CrosshairFireFactor = 1.25f;
+		}
+		StartFireTimer();
+	}
+
+}
+
+void UCombatComponent::ShootButtonPress(bool bPress)
+{
+	bShootButtonPressed  = bPress;
+	if (bShootButtonPressed)
+	{
+		Fire();
+	}
+}
+
+void UCombatComponent::ServerWeaponFire_Implementation(const FVector_NetQuantize& HitTarget)
+{
+	MulticastWeaponFire(HitTarget);
+}
+
+void UCombatComponent::MulticastWeaponFire_Implementation(const FVector_NetQuantize& HitTarget)
+{
+	if (BlasterCharacter && EquippedWeapon)
+	{
+		BlasterCharacter->PlayShootingMontage(bIsAiming);
+		EquippedWeapon->WeaponFire(HitTarget);
+	}
+}
+
+void UCombatComponent::StartFireTimer()
+{
+	if (BlasterCharacter == nullptr && EquippedWeapon == nullptr) return;
+	BlasterCharacter->GetWorldTimerManager().SetTimer(
+		FireTimer,
+		this,
+		&UCombatComponent::FireTimerFinished,
+		EquippedWeapon->FireDelay
+		);
+}
+
+void UCombatComponent::FireTimerFinished()
+{
+	bCanFire = true;
+	if (bShootButtonPressed && EquippedWeapon->bAutoMaticFire)
+	{
+		
+		Fire();
+	}
 }
 
 //TODO::可能的优化，不要每帧都传CrosshairPackage，一个想法在OnRep中修改Package;;每个武器应该有不同的扩散
@@ -103,106 +198,6 @@ void UCombatComponent::SetHUDCrosshair(float DeltaTime)
 	}
 }
 
-void UCombatComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(UCombatComponent,EquippedWeapon);
-	DOREPLIFETIME(UCombatComponent,bIsAiming);
-}
-
-//只会在服务器中执行,因为只会在服务器中调用这个函数
-void UCombatComponent::EquipWeapon(AWeapon* InWeapon)
-{
-	if (BlasterCharacter == nullptr || InWeapon == nullptr) return;
-	//只在服务器中设置
-	EquippedWeapon = InWeapon;
-	//设置武器状态
-	EquippedWeapon->SetWeaponState(EWeaponState::Ews_Equipped);
-	const  USkeletalMeshSocket* RightHandSocket = BlasterCharacter->GetMesh()->GetSocketByName(FName("RightHandSocket"));
-	if (RightHandSocket)
-	{
-		RightHandSocket->AttachActor(EquippedWeapon, BlasterCharacter->GetMesh());
-	}
-	EquippedWeapon->ShowPickupText(false);
-	BlasterCharacter->bUseControllerRotationYaw = true;
-	BlasterCharacter->GetCharacterMovement()->bOrientRotationToMovement = false;
-	//设置武器拥有者
-	EquippedWeapon->SetOwner(BlasterCharacter);
-}
-
-void UCombatComponent::ShootButtonPress(bool bPress)
-{
-	bShootButtonPressed  = bPress;
-	if (bShootButtonPressed)
-	{
-		FHitResult HitResult;
-		TraceUnderCrosshair(HitResult);
-		ServerWeaponFire(HitResult.ImpactPoint);
-		if (EquippedWeapon)
-		{
-			CrosshairFireFactor = 1.25f;
-		}
-	}
-}
-
-void UCombatComponent::ServerWeaponFire_Implementation(const FVector_NetQuantize& HitTarget)
-{
-	MulticastWeaponFire(HitTarget);
-}
-
-void UCombatComponent::MulticastWeaponFire_Implementation(const FVector_NetQuantize& HitTarget)
-{
-	if (BlasterCharacter && EquippedWeapon)
-	{
-		BlasterCharacter->PlayShootingMontage(bIsAiming);
-		EquippedWeapon->WeaponFire(HitTarget);
-	}
-}
-
-AWeapon* UCombatComponent::GetEquippedWeapon()
-{
-	if (EquippedWeapon)
-	{
-		return EquippedWeapon;
-	}
-	return nullptr;
-}
-
-FVector UCombatComponent::GetAimTarget()
-{
-	return AimTarget;
-}
-
-//先让按下瞄准的客户端看到变化，然后再同步，而不是等服务器同步，因为网卡时会很顿
-void UCombatComponent::SetAiming(bool bInAiming)
-{
-	bIsAiming = bInAiming;
-	if (BlasterCharacter)
-	{
-		BlasterCharacter->GetCharacterMovement()->MaxWalkSpeed = bInAiming ? AimWalkSpeed : BaseWalkSpeed;
-		if (!BlasterCharacter->HasAuthority())
-		{
-			ServerSetAiming(bInAiming);
-		}
-	}
-}
-
-void UCombatComponent::InterpFOV(float DeltaTime)
-{
-	if (EquippedWeapon == nullptr) return;
-	if (bIsAiming)
-	{
-		CurrentFOV = FMath::FInterpTo(CurrentFOV,EquippedWeapon->GetZoomFOV(),DeltaTime,EquippedWeapon->GetZoomInterpSpeed());
-	}else
-	{
-		CurrentFOV = FMath::FInterpTo(CurrentFOV,DefaultFOV,DeltaTime,EquippedWeapon->GetZoomInterpSpeed());
-	}
-	if (BlasterCharacter->GetCamera())
-	{
-		BlasterCharacter->GetCamera()->SetFieldOfView(CurrentFOV);
-	}
-}
-
 void UCombatComponent::TraceUnderCrosshair(FHitResult& HitResult)
 {
 	FVector2D ViewPortSize;
@@ -250,10 +245,44 @@ void UCombatComponent::TraceUnderCrosshair(FHitResult& HitResult)
 	}
 }
 
+FVector UCombatComponent::GetAimTarget()
+{
+	return AimTarget;
+}
+
+//先让按下瞄准的客户端看到变化，然后再同步，而不是等服务器同步，因为网卡时会很顿
+void UCombatComponent::SetAiming(bool bInAiming)
+{
+	bIsAiming = bInAiming;
+	if (BlasterCharacter)
+	{
+		BlasterCharacter->GetCharacterMovement()->MaxWalkSpeed = bInAiming ? AimWalkSpeed : BaseWalkSpeed;
+		if (!BlasterCharacter->HasAuthority())
+		{
+			ServerSetAiming(bInAiming);
+		}
+	}
+}
 void UCombatComponent::ServerSetAiming_Implementation(bool bInAiming)
 {
 	BlasterCharacter->GetCharacterMovement()->MaxWalkSpeed = bInAiming ? AimWalkSpeed : BaseWalkSpeed;
 	bIsAiming = bInAiming;
+}
+
+void UCombatComponent::InterpFOV(float DeltaTime)
+{
+	if (EquippedWeapon == nullptr) return;
+	if (bIsAiming)
+	{
+		CurrentFOV = FMath::FInterpTo(CurrentFOV,EquippedWeapon->GetZoomFOV(),DeltaTime,EquippedWeapon->GetZoomInterpSpeed());
+	}else
+	{
+		CurrentFOV = FMath::FInterpTo(CurrentFOV,DefaultFOV,DeltaTime,EquippedWeapon->GetZoomInterpSpeed());
+	}
+	if (BlasterCharacter->GetCamera())
+	{
+		BlasterCharacter->GetCamera()->SetFieldOfView(CurrentFOV);
+	}
 }
 
 //有关捡到武器的操作都是在服务器中执行的，需要客户端也改变时就要用到OnRep
@@ -261,6 +290,13 @@ void UCombatComponent::OnRep_EquippedWeapon()
 {
 	if (EquippedWeapon && BlasterCharacter)
 	{
+		//原本只在服务器中执行，但是新加了Drop的状态，会开启武器的物理模拟。如果网卡，武器复制到人物手上时物理模拟可能还未关掉所以要在这里再次检查
+		EquippedWeapon->SetWeaponState(EWeaponState::Ews_Equipped);
+		const  USkeletalMeshSocket* RightHandSocket = BlasterCharacter->GetMesh()->GetSocketByName(FName("RightHandSocket"));
+		if (RightHandSocket)
+		{
+			RightHandSocket->AttachActor(EquippedWeapon, BlasterCharacter->GetMesh());
+		}
 		BlasterCharacter->bUseControllerRotationYaw = true;
 		BlasterCharacter->GetCharacterMovement()->bOrientRotationToMovement = false;
 	}

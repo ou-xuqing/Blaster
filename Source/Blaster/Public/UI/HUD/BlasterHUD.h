@@ -6,6 +6,10 @@
 #include "GameFramework/HUD.h"
 #include "BlasterHUD.generated.h"
 
+class UOverlayUserWidgetController;
+class ABlasterCharacter;
+class UBlasterUserWidget;
+
 USTRUCT(BlueprintType)
 struct FCrosshairPackage
 {
@@ -40,7 +44,19 @@ public:
 
 	UPROPERTY(EditDefaultsOnly,Category="Crosshair | Spread")
 	float CrosshairSpreadMagnitude = 5.f;
+
+	void InitOverlayWidget(APlayerController* InPlayerController,ABlasterCharacter* InBlasterCharacter);
 private:
 	//CombatComponent传入
 	FCrosshairPackage CrosshairPackage;
+
+	UPROPERTY()
+	TObjectPtr<UBlasterUserWidget> OverlayWidget;
+	UPROPERTY(EditDefaultsOnly,Category="Widget")
+	TSubclassOf<UUserWidget> OverlayWidgetClass;
+	
+	UPROPERTY()
+	TObjectPtr<UOverlayUserWidgetController> OverlayWidgetController;
+	UPROPERTY(EditDefaultsOnly,Category="Widget | Controller")
+	TSubclassOf<UOverlayUserWidgetController> OverlayWidgetControllerClass;
 };

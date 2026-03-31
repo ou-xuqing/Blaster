@@ -104,7 +104,31 @@ void AWeapon::SetWeaponState(EWeaponState InState)
 	{
 		ShowPickupText(false);
 		Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		
+		WeaponMesh->SetEnableGravity(false);
+		WeaponMesh->SetSimulatePhysics(false);
+		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
+	if (WeaponState == EWeaponState::Ews_Dropped)
+	{
+		if (HasAuthority())
+		{
+			//在服务器中启动球形碰撞（因为该碰撞只在服务器中绑定函数）
+			Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		}
+		//设置顺序不能乱，因为会警告
+		WeaponMesh->SetEnableGravity(true);
+		WeaponMesh->SetSimulatePhysics(true);
+		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
+}
+
+void AWeapon::DropWeapon()
+{
+	SetWeaponState(EWeaponState::Ews_Dropped);
+	const FDetachmentTransformRules DetachmentTransformRules(EDetachmentRule::KeepWorld,true);
+	WeaponMesh->DetachFromComponent(DetachmentTransformRules);
+	SetOwner(nullptr);
 }
 
 void AWeapon::ShowPickupText(bool bInShowPickup)
@@ -120,6 +144,15 @@ void AWeapon::OnRep_WeaponState()
 	if (WeaponState == EWeaponState::Ews_Equipped)
 	{
 		ShowPickupText(false);
+		WeaponMesh->SetEnableGravity(false);
+		WeaponMesh->SetSimulatePhysics(false);
+		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+	if (WeaponState == EWeaponState::Ews_Dropped)
+	{
+		WeaponMesh->SetEnableGravity(true);
+		WeaponMesh->SetSimulatePhysics(true);
+		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	}
 }
 

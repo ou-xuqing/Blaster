@@ -2,9 +2,9 @@
 
 
 #include "BulletActor/Casing.h"
-
-#include "Kismet/GameplayStatics.h"
 #include "Sound/SoundCue.h"
+#include "Kismet/GameplayStatics.h"
+
 
 // Sets default values
 ACasing::ACasing()

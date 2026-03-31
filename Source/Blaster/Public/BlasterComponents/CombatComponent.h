@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "HUD/BlasterHUD.h"
+#include "UI/HUD/BlasterHUD.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include "CombatComponent.generated.h"
 
@@ -26,6 +26,7 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	
 	void EquipWeapon(AWeapon* InWeapon);
+	void Fire();
 
 	void ShootButtonPress(bool bPress);
 	
@@ -34,6 +35,8 @@ public:
 	FVector GetAimTarget();
 	//修改相机的FOV
 	void InterpFOV(float DeltaTime);
+
+	void DropWeapon();
 protected:
 	virtual void BeginPlay() override;
 
@@ -52,9 +55,13 @@ protected:
 	UFUNCTION(NetMulticast,Reliable)
 	void MulticastWeaponFire(const FVector_NetQuantize& HitTarget);
 
+	void StartFireTimer();
+	void FireTimerFinished();
+	
 	void TraceUnderCrosshair(FHitResult& HitResult);
 
 	void SetHUDCrosshair(float DeltaTime);
+
 private:
 	//为了告诉动画人物是否装备了武器
 	UPROPERTY(ReplicatedUsing=OnRep_EquippedWeapon)
@@ -95,4 +102,8 @@ private:
 	//瞄准放大
 	float DefaultFOV;
 	float CurrentFOV;
+
+	//自动开火
+	FTimerHandle FireTimer;
+	bool bCanFire = true;
 };

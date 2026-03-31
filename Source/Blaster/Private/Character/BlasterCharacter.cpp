@@ -8,17 +8,20 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Game/BlasterGameMode.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/BlasterPlayerController.h"
 #include "Weapon/Weapon.h"
 
 ABlasterCharacter::ABlasterCharacter()
 {
 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
-
+	bReplicates = true;
+	
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>("SpringArm");
 	SpringArm->SetupAttachment(GetMesh());
 	SpringArm->bUsePawnControlRotation = true;
@@ -46,6 +49,8 @@ ABlasterCharacter::ABlasterCharacter()
 	//设置组件为复制，组件不需要和变量一样在Lifetime中注册，也不需要UPROPERTY声明。
 	CombatComponent->SetIsReplicated(true);
 
+	DissolveTimelineComponent = CreateDefaultSubobject<UTimelineComponent>("DissolveTimelineComponent");
+
 	//打开下蹲功能
 	GetCharacterMovement()->NavAgentProps.bCanCrouch = true;
 
@@ -59,8 +64,15 @@ ABlasterCharacter::ABlasterCharacter()
 void ABlasterCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	//服务器中才会计算伤害
+	if (HasAuthority())
+	{
+		OnTakeAnyDamage.AddDynamic(this,&ABlasterCharacter::ReceiveDamage);
+	}
+	
 }
-//TODO::但是这样修改反而效果不好
+
 void ABlasterCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -77,7 +89,6 @@ void ABlasterCharacter::Tick(float DeltaTime)
 	{
 		/*
 		 * 防止细微移动不触发OnRep_ReplicatedMovement，不过即使0.25在很小的移动下也会显得卡顿
-		 
 		TimeFromLastReplicatedMovement += DeltaTime;
 		if (TimeFromLastReplicatedMovement > 0.25f)
 		{
@@ -103,6 +114,7 @@ void ABlasterCharacter::GetLifetimeReplicatedProps(TArray<class FLifetimePropert
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	//只对拥有该Pawn的客户端复制
 	DOREPLIFETIME_CONDITION(ABlasterCharacter, OverlappingWeapon, COND_OwnerOnly);
+	DOREPLIFETIME(ABlasterCharacter,Health)
 }
 
 void ABlasterCharacter::PostInitializeComponents()
@@ -246,6 +258,30 @@ void ABlasterCharacter::OnRep_ReplicatedMovement()
 	TimeFromLastReplicatedMovement = 0.f;
 }
 
+void ABlasterCharacter::InitHUD()
+{
+	if (ABlasterPlayerController* BlasterPlayerController = Cast<ABlasterPlayerController>(GetController()))
+	{
+		if (ABlasterHUD* BlasterHUD = Cast<ABlasterHUD>(BlasterPlayerController->GetHUD()))
+		{
+			BlasterHUD->InitOverlayWidget(BlasterPlayerController,this);
+		}
+		OnHealthChanged.Broadcast(MaxHealth);
+	}
+}
+
+void ABlasterCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+	InitHUD();
+}
+
+void ABlasterCharacter::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+	InitHUD();
+}
+
 //只会在服务器中调用，因为是通过Weapon中的重叠函数调用这个函数的，OverlappingWeapon是复制变量
 void ABlasterCharacter::SetOverlappingWeapon(AWeapon* InWeapon)
 {
@@ -322,9 +358,17 @@ void ABlasterCharacter::PlayHitReactMontage()
 	}
 }
 
-void ABlasterCharacter::MultiPlayHitReactMontage_Implementation()
+void ABlasterCharacter::PlayElimMontage()
 {
-	PlayHitReactMontage();
+
+	if (CombatComponent)
+	{
+		UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+		if (AnimInstance && ElimMontage)
+		{
+			AnimInstance->Montage_Play(ElimMontage);
+		}
+	}
 }
 
 //武器的Overlap只会在服务器中处理，客户端出现“按E拾取”是服务器复制的结果，所以客户端需要RPC告诉服务器执行装备武器
@@ -364,7 +408,7 @@ void ABlasterCharacter::OnRep_OverlappingWeapon(AWeapon* LastWeapon)
 	}
 }
 
-float ABlasterCharacter::CalculateSpeed()
+float ABlasterCharacter::CalculateSpeed() const
 {
 	FVector Velocity = GetVelocity();
 	Velocity.Z = 0.f;
@@ -398,7 +442,7 @@ void ABlasterCharacter::CrouchButtonPressed()
 	}
 }
 
-void ABlasterCharacter::AimingButtonPressed()
+void ABlasterCharacter::AimingButtonPressed() const
 {
 	if (CombatComponent)
 	{
@@ -406,7 +450,7 @@ void ABlasterCharacter::AimingButtonPressed()
 	}
 }
 
-void ABlasterCharacter::AimingButtonReleased()
+void ABlasterCharacter::AimingButtonReleased() const
 {
 	if (CombatComponent)
 	{
@@ -414,7 +458,7 @@ void ABlasterCharacter::AimingButtonReleased()
 	}
 }
 
-void ABlasterCharacter::ShootButtonPressed()
+void ABlasterCharacter::ShootButtonPressed() const
 {
 	if (CombatComponent && CombatComponent->EquippedWeapon)
 	{
@@ -422,7 +466,7 @@ void ABlasterCharacter::ShootButtonPressed()
 	}
 }
 
-void ABlasterCharacter::ShootButtonReleased()
+void ABlasterCharacter::ShootButtonReleased() const
 {
 	if (CombatComponent && CombatComponent->EquippedWeapon)
 	{
@@ -430,17 +474,17 @@ void ABlasterCharacter::ShootButtonReleased()
 	}
 }
 
-bool ABlasterCharacter::IsEquippedWeapon()
+bool ABlasterCharacter::IsEquippedWeapon() const
 {
 	return (CombatComponent && CombatComponent->EquippedWeapon);
 }
 
-bool ABlasterCharacter::IsAiming()
+bool ABlasterCharacter::IsAiming() const 
 {
 	return (CombatComponent && CombatComponent->bIsAiming);
 }
 
-AWeapon* ABlasterCharacter::GetEquippedWeapon()
+AWeapon* ABlasterCharacter::GetEquippedWeapon() const
 {
 	if (CombatComponent)
 	{
@@ -453,4 +497,98 @@ FVector ABlasterCharacter::GetAimTarget() const
 {
 	if (CombatComponent == nullptr) return FVector();
 	return CombatComponent->AimTarget;
+}
+
+
+void ABlasterCharacter::OnRep_Health()
+{
+	PlayHitReactMontage();
+	OnHealthChanged.Broadcast(Health);
+}
+
+void ABlasterCharacter::UpdateDissolveMaterial(float DissolveValue)
+{
+	if (DissolveMaterialInstanceDynamic)
+	{
+		DissolveMaterialInstanceDynamic->SetScalarParameterValue(TEXT("Dissolve"), DissolveValue);
+	}
+}
+
+void ABlasterCharacter::StartDissolve()
+{
+	DissolveTrack.BindDynamic(this,&ABlasterCharacter::UpdateDissolveMaterial);
+	if (DissolveTimelineComponent && DissolveCurve)
+	{
+		DissolveTimelineComponent->AddInterpFloat(DissolveCurve,DissolveTrack);
+		DissolveTimelineComponent->Play();
+	}
+}
+
+//在服务器中执行，因为只在服务器中绑定
+void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType,
+	class AController* InstigatedBy, AActor* DamageCauser)
+{
+	Health = FMath::Clamp(Health-Damage,0.f,MaxHealth);
+
+	//RPC的开销比复制要大，所以不用多播RPC而是在服务器和复制函数中调用执行montage
+	PlayHitReactMontage();
+	OnHealthChanged.Broadcast(Health);
+
+	//生命值为0时淘汰
+	if (Health == 0.f)
+	{
+		if (ABlasterGameMode* BlasterGameMode = Cast<ABlasterGameMode>(GetWorld()->GetAuthGameMode()))
+		{
+			ABlasterPlayerController* ElimPlayerController = Cast<ABlasterPlayerController>(GetController());
+			ABlasterPlayerController* AttackPlayerController = Cast<ABlasterPlayerController>(InstigatedBy);
+			BlasterGameMode->PlayerEliminated(this,ElimPlayerController,AttackPlayerController);
+		}
+	}
+}
+
+void ABlasterCharacter::ElimTimerFinished()
+{
+	if (ABlasterGameMode* BlasterGameMode = Cast<ABlasterGameMode>(GetWorld()->GetAuthGameMode()))
+	{
+		BlasterGameMode->RequestRespawn(this,GetController());
+	}
+}
+
+void ABlasterCharacter::Elim()
+{
+	if (CombatComponent && CombatComponent->EquippedWeapon)
+	{
+		//TODO：：暂时只有角色死亡才会掉落武器，所以不用处理CombatComponent中的EquippedWeapon，按G丢弃武器
+		CombatComponent->EquippedWeapon->DropWeapon();
+	}
+	MulticastElim();
+	GetWorldTimerManager().SetTimer(
+		ElimTimer,
+		this,
+		&ABlasterCharacter::ElimTimerFinished,
+		ElimDelay
+		);
+}
+
+void ABlasterCharacter::MulticastElim_Implementation()
+{
+	bIsElim = true;
+	
+	PlayElimMontage();
+	//开始溶解
+	if (DissolveMaterialInstance)
+	{
+		DissolveMaterialInstanceDynamic = UMaterialInstanceDynamic::Create(DissolveMaterialInstance,this);
+		GetMesh()->SetMaterial(0,DissolveMaterialInstanceDynamic);
+		DissolveMaterialInstanceDynamic->SetScalarParameterValue(TEXT("Dissolve"), -0.55f);
+		DissolveMaterialInstanceDynamic->SetScalarParameterValue(TEXT("Emissive"), 200.f);
+	}
+	StartDissolve();
+
+	//关闭碰撞
+	GetCharacterMovement()->DisableMovement();
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	DisableInput(Cast<APlayerController>(GetController()));
+
 }

@@ -8,7 +8,7 @@
 
 class UProjectileMovementComponent;
 class UBoxComponent;
-
+class USoundCue;
 /*
  * 在服务器中产生子弹，复制到客户端
  */

@@ -3,12 +3,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/TimelineComponent.h"
 #include "GameFramework/Character.h"
 #include "Interface/PlayerInterface.h"
 #include "BlasterCharacter.generated.h"
 
+class UTimelineComponent;
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnAttributeChanged, float);
+
 class UCameraComponent;
-//TODO::蹲下时跳跃
 class UCombatComponent;
 class AWeapon;
 class UWidgetComponent;
@@ -37,12 +40,15 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	virtual void OnRep_ReplicatedMovement() override;
+	void InitHUD();
+
+	virtual void PossessedBy(AController* NewController) override;
+	
+	virtual void OnRep_PlayerState() override;
 	//组件初始化完成后调用
 	virtual void PostInitializeComponents() override;
 
 	//玩家控制
-	UCameraComponent* GetCamera() const { return FollowCamera; }
-
 	void SetOverlappingWeapon(AWeapon* InWeapon);
 
 	void EquippedButtonPressed();
@@ -54,41 +60,39 @@ public:
 
 	void CrouchButtonPressed();
 
-	void AimingButtonPressed();
+	void AimingButtonPressed() const; 
 
-	void AimingButtonReleased();
+	void AimingButtonReleased() const;
 
-	void ShootButtonPressed();
+	void ShootButtonPressed() const;
 
-	void ShootButtonReleased();
+	void ShootButtonReleased() const;
 
 	virtual void Jump() override;
 
 	/*
 	 * 动画相关
 	 */
-	bool IsEquippedWeapon();
+	bool IsEquippedWeapon() const;
 
-	bool IsAiming();
+	bool IsAiming() const;
 	void CalculateAO_Pitch();
 
 	//找到站立不动时blend的参数
 	void AimOffset(float DeltaTime);
 
-	float GetAO_Yaw() const { return AO_Yaw; }
-	float GetAO_Pitch() const { return AO_Pitch; }
-	bool GetRotateRootBone() const { return bRotateRootBone; }
 	//IK用
-	AWeapon* GetEquippedWeapon();
-
-	ETurningInPlace GetTurningInPlace() const { return TurningInPlace; }
-
+	AWeapon* GetEquippedWeapon() const;
+	
 	void PlayShootingMontage(bool bInAiming);
 
-	UFUNCTION(NetMulticast, Unreliable)
-	void MultiPlayHitReactMontage();
+	//属性相关委托
+	FOnAttributeChanged OnHealthChanged;
 
-	FVector GetAimTarget() const;
+	void Elim();
+	
+	UFUNCTION(NetMulticast,Reliable)
+	void MulticastElim();
 
 protected:
 	virtual void BeginPlay() override;
@@ -97,6 +101,8 @@ protected:
 
 	void PlayHitReactMontage();
 
+	void PlayElimMontage();
+	
 	//摄像头距离人物较近隐藏人物
 	void HideCharacterInCameraClose();
 
@@ -107,6 +113,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Camera")
 	float CameraClosedThreshold = 200.f;
 
+	UFUNCTION()
+	void ReceiveDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
+
+	void ElimTimerFinished();
+	
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Camera")
 	TObjectPtr<class USpringArmComponent> SpringArm;
@@ -132,18 +143,70 @@ private:
 	FRotator StartRotation;
 	//用来转身
 	float InterpYaw;
-
+	//SimProxy模拟移动
 	bool bRotateRootBone;
 	float TurnThreshold = 85.f;
 	FRotator ProxyLastFrameRotation;
 	FRotator ProxyRotation;
 	float ProxyYaw;
 	float TimeFromLastReplicatedMovement = 0.f;
-	float CalculateSpeed();
+	float CalculateSpeed() const;
 
 	UPROPERTY(EditAnywhere, Category = "Combat")
 	TObjectPtr<UAnimMontage> ShootingMontage;
 
 	UPROPERTY(EditAnywhere, Category = "Combat")
 	TObjectPtr<UAnimMontage> HitReactMontage;
+
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	TObjectPtr<UAnimMontage> ElimMontage;
+	
+	//生命值
+	UPROPERTY(EditDefaultsOnly,Category="PlayerState")
+	float MaxHealth = 100.f;
+
+	UPROPERTY(ReplicatedUsing=OnRep_Health)
+	float Health = 100.f;
+	
+	UFUNCTION()
+	void OnRep_Health();
+	//死亡
+	bool bIsElim = false;
+
+	UPROPERTY(EditDefaultsOnly, Category="Elim")
+	float ElimDelay = 3.f;
+	FTimerHandle ElimTimer;
+
+	//消除
+	UPROPERTY()
+	TObjectPtr<UTimelineComponent> DissolveTimelineComponent;
+	FOnTimelineFloat DissolveTrack;
+	UPROPERTY(EditDefaultsOnly, Category="Elim")
+	TObjectPtr<UCurveFloat> DissolveCurve;
+	
+	UPROPERTY(VisibleAnywhere,Category="Elim")
+	TObjectPtr<UMaterialInstanceDynamic> DissolveMaterialInstanceDynamic;
+	UPROPERTY(EditDefaultsOnly,Category="Elim")
+	TObjectPtr<UMaterialInstance> DissolveMaterialInstance;
+	
+	UFUNCTION()
+	void UpdateDissolveMaterial(float DissolveValue);
+	void StartDissolve();
+	
+
+	
+public:
+	UCameraComponent* GetCamera() const { return FollowCamera; }
+	
+	float GetAO_Yaw() const { return AO_Yaw; }
+	float GetAO_Pitch() const { return AO_Pitch; }
+	bool GetRotateRootBone() const { return bRotateRootBone; }
+
+	ETurningInPlace GetTurningInPlace() const { return TurningInPlace; }
+	
+	FVector GetAimTarget() const;
+
+	float GetMaxHealth() const { return MaxHealth;}
+
+	bool GetIsElim() const {return bIsElim;}
 };
