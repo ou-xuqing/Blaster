@@ -3,6 +3,7 @@
 
 #include "BlasterComponents/CombatComponent.h"
 
+#include "BlasterComponents/CombateState.h"
 #include "Camera/CameraComponent.h"
 #include "Character/BlasterCharacter.h"
 #include "Engine/SkeletalMeshSocket.h"
@@ -11,7 +12,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/BlasterPlayerController.h"
+#include "Sound/SoundCue.h"
 #include "Weapon/Weapon.h"
+#include "Weapon/WeaponTypes.h"
 
 UCombatComponent::UCombatComponent()
 {
@@ -26,8 +29,11 @@ void UCombatComponent::BeginPlay()
 		BlasterCharacter->GetCharacterMovement()->MaxWalkSpeed = BaseWalkSpeed;
 		DefaultFOV = BlasterCharacter->GetCamera()->FieldOfView;
 		CurrentFOV = DefaultFOV;
+		if (BlasterCharacter->HasAuthority())
+		{
+			InitCarriedAmmo();
+		}
 	}
-
 }
 
 void UCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -49,12 +55,18 @@ void UCombatComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(UCombatComponent,EquippedWeapon);
 	DOREPLIFETIME(UCombatComponent,bIsAiming);
+	DOREPLIFETIME_CONDITION(UCombatComponent,CarriedAmmo,COND_OwnerOnly);
+	DOREPLIFETIME(UCombatComponent,CombatState);
 }
 
 //只会在服务器中执行,因为只会在服务器中调用这个函数
 void UCombatComponent::EquipWeapon(AWeapon* InWeapon)
 {
 	if (BlasterCharacter == nullptr || InWeapon == nullptr) return;
+	if (EquippedWeapon)
+	{
+		EquippedWeapon->DropWeapon(FVector(0.f,0.f,0.f));
+	}
 	//只在服务器中设置
 	EquippedWeapon = InWeapon;
 	//设置武器状态
@@ -67,8 +79,89 @@ void UCombatComponent::EquipWeapon(AWeapon* InWeapon)
 	EquippedWeapon->ShowPickupText(false);
 	BlasterCharacter->bUseControllerRotationYaw = true;
 	BlasterCharacter->GetCharacterMovement()->bOrientRotationToMovement = false;
-	//设置武器拥有者
+	if (EquippedWeapon->EquipSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this
+			,EquippedWeapon->EquipSound,BlasterCharacter->GetActorLocation());
+	}
+	
+	if (CarriedAmmoMap.Contains(EquippedWeapon->GetWeaponType()))
+	{
+		//只在服务器中运行，所以不需要将map的值同步给客户端
+		CarriedAmmo = CarriedAmmoMap[EquippedWeapon->GetWeaponType()];
+	}
+	if (EquippedWeapon->AmmoIsEmpty())
+	{
+		Reload();
+	}
+	BlasterCharacter->OnCarriedAmmoChanged.Broadcast(CarriedAmmo);
+	//设置武器拥有者,装备后广播弹药
 	EquippedWeapon->SetOwner(BlasterCharacter);
+	EquippedWeapon->BroadcastAmmoChangedToOwner();
+	CombatState = ECombatState::Ecs_Unoccupied;
+}
+
+//有关捡到武器的操作都是在服务器中执行的，需要客户端也改变时就要用到OnRep
+void UCombatComponent::OnRep_EquippedWeapon()
+{
+	if (EquippedWeapon && BlasterCharacter)
+	{
+		//原本只在服务器中执行，但是新加了Drop的状态，会开启武器的物理模拟。如果网卡，武器复制到人物手上时物理模拟可能还未关掉所以要在这里再次检查
+		EquippedWeapon->SetWeaponState(EWeaponState::Ews_Equipped);
+		const  USkeletalMeshSocket* RightHandSocket = BlasterCharacter->GetMesh()->GetSocketByName(FName("RightHandSocket"));
+		if (RightHandSocket)
+		{
+			RightHandSocket->AttachActor(EquippedWeapon, BlasterCharacter->GetMesh());
+		}
+		if (EquippedWeapon->EquipSound)
+		{
+			UGameplayStatics::PlaySoundAtLocation(this
+				,EquippedWeapon->EquipSound,BlasterCharacter->GetActorLocation());
+		}
+		if (EquippedWeapon->AmmoIsEmpty())
+		{
+			Reload();
+		}
+		BlasterCharacter->bUseControllerRotationYaw = true;
+		BlasterCharacter->GetCharacterMovement()->bOrientRotationToMovement = false;
+	}else if (BlasterCharacter)
+	{
+		BlasterCharacter->bUseControllerRotationYaw = false;
+		BlasterCharacter->GetCharacterMovement()->bOrientRotationToMovement = true;
+		BlasterCharacter->OnAmmoChanged.Broadcast(0);
+		bCanFire = true;
+		bShootButtonPressed = false;
+	}
+}
+
+void UCombatComponent::DropWeapon()
+{
+	if (bIsAiming) return;
+	if (EquippedWeapon)
+	{
+		ServerDropWeapon();
+	}
+}
+/*
+ * 因为武器是复制变量，所以执行丢弃操作要去服务器中完成，客户端只需要在OnRep中调整参数即可。
+ * 至于为什么在这里直接广播弹药量，因为武器丢了之后。人物的弹药UI就和武器没关系了
+ */
+void UCombatComponent::ServerDropWeapon_Implementation()
+{
+	if (bIsAiming) return;
+	if (EquippedWeapon)
+	{
+		BlasterCharacter->StopAllAnimMontage();
+		EquippedWeapon->DropWeapon(BlasterCharacter->GetActorForwardVector());
+		
+		EquippedWeapon = nullptr;
+		bShootButtonPressed = false;
+		BlasterCharacter->bUseControllerRotationYaw = false;
+		BlasterCharacter->GetCharacterMovement()->bOrientRotationToMovement = true;
+		BlasterCharacter->GetWorldTimerManager().ClearTimer(FireTimer);
+		BlasterCharacter->OnAmmoChanged.Broadcast(0);
+		bCanFire = true;
+	}
 }
 
 AWeapon* UCombatComponent::GetEquippedWeapon()
@@ -82,7 +175,7 @@ AWeapon* UCombatComponent::GetEquippedWeapon()
 
 void UCombatComponent::Fire()
 {
-	if (bCanFire)
+	if (CanFire())
 	{
 		bCanFire = false;
 		ServerWeaponFire(AimTarget);
@@ -92,7 +185,6 @@ void UCombatComponent::Fire()
 		}
 		StartFireTimer();
 	}
-
 }
 
 void UCombatComponent::ShootButtonPress(bool bPress)
@@ -106,21 +198,30 @@ void UCombatComponent::ShootButtonPress(bool bPress)
 
 void UCombatComponent::ServerWeaponFire_Implementation(const FVector_NetQuantize& HitTarget)
 {
-	MulticastWeaponFire(HitTarget);
+	if (BlasterCharacter && EquippedWeapon && CombatState == ECombatState::Ecs_Unoccupied)
+	{
+		MulticastWeaponFire(HitTarget);
+	}
 }
 
 void UCombatComponent::MulticastWeaponFire_Implementation(const FVector_NetQuantize& HitTarget)
 {
-	if (BlasterCharacter && EquippedWeapon)
+	if (BlasterCharacter && EquippedWeapon && CombatState == ECombatState::Ecs_Unoccupied)
 	{
 		BlasterCharacter->PlayShootingMontage(bIsAiming);
 		EquippedWeapon->WeaponFire(HitTarget);
 	}
 }
 
+bool UCombatComponent::CanFire()
+{
+	if (EquippedWeapon == nullptr) return false;
+	return !EquippedWeapon->AmmoIsEmpty() && bCanFire && CombatState == ECombatState::Ecs_Unoccupied;
+}
+
 void UCombatComponent::StartFireTimer()
 {
-	if (BlasterCharacter == nullptr && EquippedWeapon == nullptr) return;
+	if (BlasterCharacter == nullptr || EquippedWeapon == nullptr) return;
 	BlasterCharacter->GetWorldTimerManager().SetTimer(
 		FireTimer,
 		this,
@@ -132,10 +233,13 @@ void UCombatComponent::StartFireTimer()
 void UCombatComponent::FireTimerFinished()
 {
 	bCanFire = true;
-	if (bShootButtonPressed && EquippedWeapon->bAutoMaticFire)
+	if (EquippedWeapon && bShootButtonPressed && EquippedWeapon->bAutoMaticFire)
 	{
-		
 		Fire();
+	}
+	if (EquippedWeapon->AmmoIsEmpty())
+	{
+		Reload();
 	}
 }
 
@@ -148,11 +252,11 @@ void UCombatComponent::SetHUDCrosshair(float DeltaTime)
 	{
 		BlasterPlayerController = Cast<ABlasterPlayerController>(BlasterCharacter->GetController());
 	}
-	if (BlasterHUD == nullptr)
+	if (BlasterPlayerController && BlasterHUD == nullptr)
 	{
 		BlasterHUD = Cast<ABlasterHUD>(BlasterPlayerController->GetHUD());
 	}
-	if (BlasterHUD)
+	if (BlasterPlayerController && BlasterHUD)
 	{
 		if (EquippedWeapon)
 		{
@@ -195,6 +299,84 @@ void UCombatComponent::SetHUDCrosshair(float DeltaTime)
 		CrosshairPackage.CrosshairSpread = 0.5f + CrosshairJumpFactor + CrosshairVelocityFactor - CrosshairAimFactor + CrosshairFireFactor;
 		
 		BlasterHUD->SetCrosshairPackage(CrosshairPackage);
+	}
+}
+
+void UCombatComponent::Reload()
+{
+	if (EquippedWeapon && EquippedWeapon->GetAmmo() < EquippedWeapon->GetMagCapacity() && CarriedAmmo>0 && CombatState != ECombatState::Ecs_Reloading)
+	{
+		ServerReload();
+	}
+}
+
+void UCombatComponent::ServerReload_Implementation()
+{
+	if (EquippedWeapon && EquippedWeapon->GetAmmo() < EquippedWeapon->GetMagCapacity() && CarriedAmmo>0 && CombatState != ECombatState::Ecs_Reloading)
+	{
+		CombatState = ECombatState::Ecs_Reloading;
+		HandleReload();
+	}
+
+}
+
+
+void UCombatComponent::OnRep_CombatState()
+{
+	if (CombatState == ECombatState::Ecs_Reloading)
+	{
+		HandleReload();
+	}else if (CombatState == ECombatState::Ecs_Unoccupied)
+	{
+		if (bShootButtonPressed)
+		{
+			Fire();
+		}
+	}
+}
+
+void UCombatComponent::HandleReload()
+{
+	if (BlasterCharacter)
+	{
+		BlasterCharacter->PlayReloadMontage();
+	}
+}
+
+void UCombatComponent::ReloadWeaponAmmo()
+{
+	if (EquippedWeapon && BlasterCharacter)
+	{
+		int32 WeaponMag = EquippedWeapon->GetMagCapacity();
+		int32 CurrentAmmo = EquippedWeapon->GetAmmo();
+		int32 LoadAmmo = WeaponMag - CurrentAmmo;
+		int32 InAmmo = FMath::Min(LoadAmmo,CarriedAmmo);
+		CarriedAmmo-=InAmmo;
+		if (CarriedAmmoMap.Contains(EquippedWeapon->GetWeaponType()))
+		{
+			CarriedAmmoMap[EquippedWeapon->GetWeaponType()] = CarriedAmmo;
+		}else
+		{
+			CarriedAmmo = 0;
+		}
+		EquippedWeapon->AddAmmo(InAmmo);
+		BlasterCharacter->OnCarriedAmmoChanged.Broadcast(CarriedAmmo);
+	}
+}
+
+void UCombatComponent::FinishReloading()
+{
+	if (BlasterCharacter)
+	{
+		if (BlasterCharacter->HasAuthority())
+		{
+			CombatState = ECombatState::Ecs_Unoccupied;
+			ReloadWeaponAmmo();
+			if (bShootButtonPressed)
+			{
+				Fire();
+			}
+		}
 	}
 }
 
@@ -271,33 +453,31 @@ void UCombatComponent::ServerSetAiming_Implementation(bool bInAiming)
 
 void UCombatComponent::InterpFOV(float DeltaTime)
 {
-	if (EquippedWeapon == nullptr) return;
-	if (bIsAiming)
+	if (bIsAiming && EquippedWeapon)
 	{
 		CurrentFOV = FMath::FInterpTo(CurrentFOV,EquippedWeapon->GetZoomFOV(),DeltaTime,EquippedWeapon->GetZoomInterpSpeed());
-	}else
+	}else if (EquippedWeapon)
 	{
 		CurrentFOV = FMath::FInterpTo(CurrentFOV,DefaultFOV,DeltaTime,EquippedWeapon->GetZoomInterpSpeed());
+	}else
+	{
+		CurrentFOV = FMath::FInterpTo(CurrentFOV,DefaultFOV,DeltaTime,20.f);
 	}
-	if (BlasterCharacter->GetCamera())
+	if (BlasterCharacter && BlasterCharacter->GetCamera())
 	{
 		BlasterCharacter->GetCamera()->SetFieldOfView(CurrentFOV);
 	}
 }
 
-//有关捡到武器的操作都是在服务器中执行的，需要客户端也改变时就要用到OnRep
-void UCombatComponent::OnRep_EquippedWeapon()
+void UCombatComponent::OnRep_CarriedAmmo()
 {
-	if (EquippedWeapon && BlasterCharacter)
+	if (BlasterCharacter)
 	{
-		//原本只在服务器中执行，但是新加了Drop的状态，会开启武器的物理模拟。如果网卡，武器复制到人物手上时物理模拟可能还未关掉所以要在这里再次检查
-		EquippedWeapon->SetWeaponState(EWeaponState::Ews_Equipped);
-		const  USkeletalMeshSocket* RightHandSocket = BlasterCharacter->GetMesh()->GetSocketByName(FName("RightHandSocket"));
-		if (RightHandSocket)
-		{
-			RightHandSocket->AttachActor(EquippedWeapon, BlasterCharacter->GetMesh());
-		}
-		BlasterCharacter->bUseControllerRotationYaw = true;
-		BlasterCharacter->GetCharacterMovement()->bOrientRotationToMovement = false;
+		BlasterCharacter->OnCarriedAmmoChanged.Broadcast(CarriedAmmo);
 	}
+}
+
+void UCombatComponent::InitCarriedAmmo()
+{
+	CarriedAmmoMap.Emplace(EWeaponType::Ewt_AssaultRifle,StartingARAmmo);
 }

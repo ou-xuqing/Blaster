@@ -3,9 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UObject/NoExportTypes.h"
 #include "BlasterUserWidgetController.generated.h"
 
+class ABlasterPlayerState;
 class ABlasterCharacter;
 /**
  * 
@@ -16,7 +16,7 @@ class BLASTER_API UBlasterUserWidgetController : public UObject
 	GENERATED_BODY()
 public:
 
-	void SetControllerParams(APlayerController* InPlayerController,ABlasterCharacter* InBlasterCharacter);
+	void SetControllerParams(APlayerController* InPlayerController,ABlasterCharacter* InBlasterCharacter,ABlasterPlayerState* InBlasterPlayerState);
 	
 	UFUNCTION(BlueprintCallable)
 	virtual void BroadcastInitialValues();
@@ -29,4 +29,7 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<ABlasterCharacter> BlasterCharacter;
+
+	UPROPERTY()
+	TObjectPtr<ABlasterPlayerState> BlasterPlayerState;
 };

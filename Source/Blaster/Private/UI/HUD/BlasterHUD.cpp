@@ -52,18 +52,18 @@ void ABlasterHUD::DrawCrossHairInCenter(UTexture2D* Texture, FVector2D Center,FV
 		TextureWidth,TextureHeight,0.f,0.f,1.f,1.f,CrosshairColor);
 }
 
-void ABlasterHUD::InitOverlayWidget(APlayerController* InPlayerController,ABlasterCharacter* InBlasterCharacter)
+void ABlasterHUD::InitOverlayWidget(APlayerController* InPlayerController,ABlasterCharacter* InBlasterCharacter,ABlasterPlayerState* BlasterPlayerState)
 {
 	if (OverlayWidgetControllerClass && OverlayWidgetClass)
 	{
 		if (OverlayWidgetController == nullptr)
 		{
 			OverlayWidgetController = NewObject<UOverlayUserWidgetController>(this,OverlayWidgetControllerClass);
-			OverlayWidgetController->SetControllerParams(InPlayerController,InBlasterCharacter);
+			OverlayWidgetController->SetControllerParams(InPlayerController,InBlasterCharacter,BlasterPlayerState);
 			OverlayWidgetController->BindCallbacksToDependencies();
 		}else
 		{
-			OverlayWidgetController->SetControllerParams(InPlayerController,InBlasterCharacter);
+			OverlayWidgetController->SetControllerParams(InPlayerController,InBlasterCharacter,BlasterPlayerState);
 			OverlayWidgetController->BindCallbacksToDependencies();
 		}
 
@@ -73,5 +73,7 @@ void ABlasterHUD::InitOverlayWidget(APlayerController* InPlayerController,ABlast
 			OverlayWidget->SetWidgetController(OverlayWidgetController);
 			OverlayWidget->AddToViewport();			
 		}
+		checkf(OverlayWidgetController,TEXT("OverlayWidgetController Init False"))
+		OverlayWidgetController->BroadcastInitialValues();
 	}
 }

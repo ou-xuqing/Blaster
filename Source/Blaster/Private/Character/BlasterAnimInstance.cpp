@@ -104,4 +104,8 @@ void UBlasterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 			RightHandRotation = FMath::RInterpTo(RightHandRotation,LookAtRotation,DeltaSeconds,30.f);
 		}
 	}
+
+	bUseIK = BlasterCharacter->GetCombatState() != ECombatState::Ecs_Reloading;
+	bUseAimOffset = BlasterCharacter->GetCombatState() != ECombatState::Ecs_Reloading;
+	bUseTransformRightHand = BlasterCharacter->GetCombatState() != ECombatState::Ecs_Reloading;
 }

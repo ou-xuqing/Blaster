@@ -3,13 +3,17 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "BlasterComponents/CombatComponent.h"
 #include "Components/TimelineComponent.h"
 #include "GameFramework/Character.h"
 #include "Interface/PlayerInterface.h"
+#include "BlasterComponents/CombateState.h"
 #include "BlasterCharacter.generated.h"
 
 class UTimelineComponent;
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnAttributeChanged, float);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnAmmoChanged,int32);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnCarriedAmmoChanged,int32);
 
 class UCameraComponent;
 class UCombatComponent;
@@ -40,8 +44,7 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	virtual void OnRep_ReplicatedMovement() override;
-	void InitHUD();
-
+	
 	virtual void PossessedBy(AController* NewController) override;
 	
 	virtual void OnRep_PlayerState() override;
@@ -68,7 +71,11 @@ public:
 
 	void ShootButtonReleased() const;
 
+	void ReloadButtonPressed() const;
+
 	virtual void Jump() override;
+
+	void DropWeapon() const;
 
 	/*
 	 * 动画相关
@@ -94,9 +101,20 @@ public:
 	UFUNCTION(NetMulticast,Reliable)
 	void MulticastElim();
 
+	void PlayReloadMontage();
+	
+	//Ammo,这是我的判断：武器所有者是Character，UIController拥有Character，所以通过Character来中转
+	FOnAmmoChanged OnAmmoChanged;
+
+	FOnCarriedAmmoChanged OnCarriedAmmoChanged;
+
+	void StopAllAnimMontage();
+
 protected:
 	virtual void BeginPlay() override;
 
+	void InitHUD();
+	
 	void SetTurningInPlace(float DeltaTime);
 
 	void PlayHitReactMontage();
@@ -128,7 +146,7 @@ private:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UWidgetComponent> OverheadWidgetComponent;
 
-	UPROPERTY(VisibleAnywhere)
+	UPROPERTY(VisibleAnywhere,BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCombatComponent> CombatComponent;
 
 	UPROPERTY(ReplicatedUsing = OnRep_OverlappingWeapon)
@@ -160,6 +178,9 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Combat")
 	TObjectPtr<UAnimMontage> ElimMontage;
+
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	TObjectPtr<UAnimMontage> ReloadMontage;
 	
 	//生命值
 	UPROPERTY(EditDefaultsOnly,Category="PlayerState")
@@ -209,4 +230,6 @@ public:
 	float GetMaxHealth() const { return MaxHealth;}
 
 	bool GetIsElim() const {return bIsElim;}
+
+	ECombatState GetCombatState() const {return CombatComponent ? CombatComponent->CombatState : ECombatState::Ecs_Max;}
 };

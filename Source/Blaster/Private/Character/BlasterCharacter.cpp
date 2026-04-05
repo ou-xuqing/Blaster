@@ -14,6 +14,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/BlasterPlayerController.h"
+#include "Player/BlasterPlayerState.h"
 #include "Weapon/Weapon.h"
 
 ABlasterCharacter::ABlasterCharacter()
@@ -59,6 +60,11 @@ ABlasterCharacter::ABlasterCharacter()
 	//修改网络复制频率
 	SetNetUpdateFrequency(66);
 	SetMinNetUpdateFrequency(33);
+}
+
+void ABlasterCharacter::StopAllAnimMontage()
+{
+	GetMesh()->GetAnimInstance()->StopAllMontages(0.1f);
 }
 
 void ABlasterCharacter::BeginPlay()
@@ -224,7 +230,6 @@ void ABlasterCharacter::SimProxiesTurn(float DeltaTime)
 		float DeltaYaw = UKismetMathLibrary::NormalizedDeltaRotator(ProxyRotation, ProxyLastFrameRotation).Yaw;
 		ProxyYaw += DeltaYaw;
 		ProxyYaw = FMath::Clamp(ProxyYaw, -90.f, 90.f);
-		UE_LOG(LogTemp,Warning,TEXT("%f"),ProxyYaw);
 		
 		if (TurningInPlace == ETurningInPlace::NotTurning)
 		{
@@ -262,11 +267,15 @@ void ABlasterCharacter::InitHUD()
 {
 	if (ABlasterPlayerController* BlasterPlayerController = Cast<ABlasterPlayerController>(GetController()))
 	{
+		//在这个时候从Controller里面拿不到，需要从Pawn自己拿，因为Super::PossessedBy(NewController);已经装载好了PlayerState
+		ABlasterPlayerState* BlasterPlayerState =Cast<ABlasterPlayerState>(GetPlayerState());
 		if (ABlasterHUD* BlasterHUD = Cast<ABlasterHUD>(BlasterPlayerController->GetHUD()))
 		{
-			BlasterHUD->InitOverlayWidget(BlasterPlayerController,this);
+			if (BlasterPlayerState)
+			{
+				BlasterHUD->InitOverlayWidget(BlasterPlayerController,this,BlasterPlayerState);
+			}
 		}
-		OnHealthChanged.Broadcast(MaxHealth);
 	}
 }
 
@@ -336,7 +345,7 @@ void ABlasterCharacter::PlayShootingMontage(bool bInAiming)
 		if (AnimInstance && ShootingMontage)
 		{
 			AnimInstance->Montage_Play(ShootingMontage);
-			FName SectionName = bInAiming ? FName("RifleHip") : FName("RifleAim");
+			FName SectionName = bInAiming ? FName("RifleAim") : FName("RifleHip");
 			//Montage通过Section分段
 			AnimInstance->Montage_JumpToSection(SectionName);
 		}
@@ -367,6 +376,25 @@ void ABlasterCharacter::PlayElimMontage()
 		if (AnimInstance && ElimMontage)
 		{
 			AnimInstance->Montage_Play(ElimMontage);
+		}
+	}
+}
+
+void ABlasterCharacter::PlayReloadMontage()
+{
+	if (CombatComponent && CombatComponent->EquippedWeapon)
+	{
+		UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+		if (AnimInstance && ReloadMontage)
+		{
+			const EWeaponType WeaponType = CombatComponent->EquippedWeapon->GetWeaponType();
+			FName SectionName;
+			if (WeaponType == EWeaponType::Ewt_AssaultRifle)
+			{
+				SectionName = FName("Rifle");
+			}
+			AnimInstance->Montage_Play(ReloadMontage);
+			AnimInstance->Montage_JumpToSection(SectionName);
 		}
 	}
 }
@@ -424,6 +452,14 @@ void ABlasterCharacter::Jump()
 	Super::Jump();
 }
 
+void ABlasterCharacter::DropWeapon() const
+{
+	if (CombatComponent && CombatComponent->EquippedWeapon)
+	{
+		CombatComponent->DropWeapon();
+	}
+}
+
 void ABlasterCharacter::JumpButtonPressed()
 {
 	Jump();
@@ -471,6 +507,14 @@ void ABlasterCharacter::ShootButtonReleased() const
 	if (CombatComponent && CombatComponent->EquippedWeapon)
 	{
 		CombatComponent->ShootButtonPress(false);
+	}
+}
+
+void ABlasterCharacter::ReloadButtonPressed() const
+{
+	if (CombatComponent && CombatComponent->EquippedWeapon)
+	{
+		CombatComponent->Reload();
 	}
 }
 
@@ -558,8 +602,9 @@ void ABlasterCharacter::Elim()
 {
 	if (CombatComponent && CombatComponent->EquippedWeapon)
 	{
-		//TODO：：暂时只有角色死亡才会掉落武器，所以不用处理CombatComponent中的EquippedWeapon，按G丢弃武器
-		CombatComponent->EquippedWeapon->DropWeapon();
+		//死亡时丢弃武器，后面设为nullptr只是保障
+		CombatComponent->EquippedWeapon->DropWeapon(FVector(0.f,0.f,0.f));
+		CombatComponent->EquippedWeapon = nullptr;
 	}
 	MulticastElim();
 	GetWorldTimerManager().SetTimer(
@@ -590,5 +635,4 @@ void ABlasterCharacter::MulticastElim_Implementation()
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	DisableInput(Cast<APlayerController>(GetController()));
-
 }

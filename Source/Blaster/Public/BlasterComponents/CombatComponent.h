@@ -6,9 +6,11 @@
 #include "Components/ActorComponent.h"
 #include "UI/HUD/BlasterHUD.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
+#include "BlasterComponents/CombateState.h"
 #include "CombatComponent.generated.h"
 
 
+enum class EWeaponType : uint8;
 class ABlasterHUD;
 class ABlasterPlayerController;
 class AWeapon;
@@ -37,6 +39,12 @@ public:
 	void InterpFOV(float DeltaTime);
 
 	void DropWeapon();
+	UFUNCTION(Server,Reliable)
+	void ServerDropWeapon();
+
+	UFUNCTION(BlueprintCallable)
+	void FinishReloading();
+	
 protected:
 	virtual void BeginPlay() override;
 
@@ -61,6 +69,16 @@ protected:
 	void TraceUnderCrosshair(FHitResult& HitResult);
 
 	void SetHUDCrosshair(float DeltaTime);
+
+	bool CanFire();
+
+	void Reload();
+
+	UFUNCTION(Server,Reliable)
+	void ServerReload();
+
+	void HandleReload();
+	void ReloadWeaponAmmo();
 
 private:
 	//为了告诉动画人物是否装备了武器
@@ -106,4 +124,23 @@ private:
 	//自动开火
 	FTimerHandle FireTimer;
 	bool bCanFire = true;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CarriedAmmo)
+	int32 CarriedAmmo = 0;
+
+	UFUNCTION()
+	void OnRep_CarriedAmmo();
+	//不同类型武器携带不同弹药
+	TMap<EWeaponType,int32> CarriedAmmoMap;
+
+	UPROPERTY(EditDefaultsOnly,Category="Ammo")
+	int32 StartingARAmmo = 30;
+	
+	void InitCarriedAmmo();
+
+	UPROPERTY(ReplicatedUsing=OnRep_CombatState)
+	ECombatState CombatState = ECombatState::Ecs_Unoccupied;
+	
+	UFUNCTION()
+	void OnRep_CombatState();
 };

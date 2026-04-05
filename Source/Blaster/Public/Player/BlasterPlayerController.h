@@ -41,6 +41,11 @@ private:
 	TObjectPtr<UInputAction> AimingAction;
 	UPROPERTY(EditDefaultsOnly,Category="Input")
 	TObjectPtr<UInputAction> ShootAction;
+	UPROPERTY(EditDefaultsOnly,Category="Input")
+	TObjectPtr<UInputAction> DropAction;
+	UPROPERTY(EditDefaultsOnly,Category="Input")
+	TObjectPtr<UInputAction> ReloadAction;
+	
 	
 	void Move(const FInputActionValue& InputActionValue);
 	void JumpMove(const FInputActionValue& InputActionValue);
@@ -51,4 +56,6 @@ private:
 	void LeaveAiming(const FInputActionValue& InputActionValue);
 	void Shooting(const FInputActionValue& InputActionValue);
 	void StopShoot(const FInputActionValue& InputActionValue);
+	void DropWeapon(const FInputActionValue& InputActionValue);
+	void Reload(const FInputActionValue& InputActionValue);
 };

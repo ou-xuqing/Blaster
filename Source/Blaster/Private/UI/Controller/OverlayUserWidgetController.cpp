@@ -4,18 +4,72 @@
 #include "UI/Controller/OverlayUserWidgetController.h"
 
 #include "Character/BlasterCharacter.h"
+#include "Player/BlasterPlayerState.h"
 
 void UOverlayUserWidgetController::BroadcastInitialValues()
 {
+	if (BlasterCharacter)
+	{
+		BlasterCharacter->OnHealthChanged.Broadcast(GetMaxHealth());
+		BlasterCharacter->OnAmmoChanged.Broadcast(0);
+		BlasterCharacter->OnCarriedAmmoChanged.Broadcast(0);
+	}
+	if (BlasterPlayerState)
+	{
+		BlasterPlayerState->OnScoreChanged.Broadcast(BlasterPlayerState->GetScore());
+		BlasterPlayerState->OnDefeatsChanged.Broadcast(BlasterPlayerState->GetDefeats());
+	}
 }
 
+//由于OverlayController和Overlay不随着Character消亡而消亡，所以绑定前要先解绑。
 void UOverlayUserWidgetController::BindCallbacksToDependencies()
 {
 	if (BlasterCharacter)
 	{
-		BlasterCharacter->OnHealthChanged.AddLambda([this](float NewHealth)
+		if (OnHealthChangedDelegateHandle.IsValid())
+		{
+			BlasterCharacter->OnHealthChanged.Remove(OnHealthChangedDelegateHandle);
+		}
+		if (OnAmmoChangedDelegateHandle.IsValid())
+		{
+			BlasterCharacter->OnAmmoChanged.Remove(OnAmmoChangedDelegateHandle);
+		}
+		if (OnCarriedAmmoChangedDelegateHandle.IsValid())
+		{
+			BlasterCharacter->OnCarriedAmmoChanged.Remove(OnCarriedAmmoChangedDelegateHandle);
+		}
+		OnHealthChangedDelegateHandle = BlasterCharacter->OnHealthChanged.AddLambda([this](float NewHealth)
 		{
 			OnHealthChangedDelegate.Broadcast(NewHealth);
+		});
+		OnAmmoChangedDelegateHandle = BlasterCharacter->OnAmmoChanged.AddLambda([this](int32 NewAmmo)
+		{
+			OnAmmoChangedDelegate.Broadcast(NewAmmo);
+		});
+		OnCarriedAmmoChangedDelegateHandle = BlasterCharacter->OnCarriedAmmoChanged.AddLambda([this](int32 NewCarriedAmmo)
+		{
+			OnCarriedAmmoChangedDelegate.Broadcast(NewCarriedAmmo);
+		});
+	}
+
+	if (BlasterPlayerState)
+	{
+		if (OnScoreChangedDelegateHandle.IsValid())
+		{
+			BlasterPlayerState->OnScoreChanged.Remove(OnScoreChangedDelegateHandle);
+		}
+		if (OnDefeatsChangedDelegateHandle.IsValid())
+		{
+			BlasterPlayerState->OnDefeatsChanged.Remove(OnDefeatsChangedDelegateHandle);
+		}
+		
+		OnScoreChangedDelegateHandle = BlasterPlayerState->OnScoreChanged.AddLambda([this](float NewScore)
+		{
+			OnScoreChangedDelegate.Broadcast(NewScore);
+		});
+		OnDefeatsChangedDelegateHandle = BlasterPlayerState->OnDefeatsChanged.AddLambda([this](int32 NewDefeat)
+		{
+			OnDefeatsChangedDelegate.Broadcast(NewDefeat);
 		});
 	}
 }

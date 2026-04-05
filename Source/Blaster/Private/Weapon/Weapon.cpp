@@ -15,7 +15,7 @@ AWeapon::AWeapon()
 	PrimaryActorTick.bCanEverTick = false;
 	//服务器控制武器的碰撞拾取操作，如果不设bReplicates，则weapon在所有机器上都是HasAuthority，设了bReplicates之后，只有在服务器中才是HasAuthority
 	bReplicates = true;
-
+	AActor::SetReplicateMovement(true);
 	WeaponMesh = CreateDefaultSubobject<USkeletalMeshComponent>("WeaponMesh");
 	SetRootComponent(WeaponMesh);
 
@@ -44,6 +44,7 @@ void AWeapon::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AWeapon,WeaponState);
+	DOREPLIFETIME(AWeapon,Ammo);
 }
 
 void AWeapon::BeginPlay()
@@ -123,11 +124,15 @@ void AWeapon::SetWeaponState(EWeaponState InState)
 	}
 }
 
-void AWeapon::DropWeapon()
+//只在服务器中调用
+void AWeapon::DropWeapon(FVector HitTarget)
 {
 	SetWeaponState(EWeaponState::Ews_Dropped);
 	const FDetachmentTransformRules DetachmentTransformRules(EDetachmentRule::KeepWorld,true);
 	WeaponMesh->DetachFromComponent(DetachmentTransformRules);
+	FVector DropDirection = (HitTarget); 
+	DropDirection.Normalize();
+	WeaponMesh->AddImpulse(DropDirection * DropMagnitude);
 	SetOwner(nullptr);
 }
 
@@ -156,5 +161,48 @@ void AWeapon::OnRep_WeaponState()
 	}
 }
 
+void AWeapon::BroadcastAmmoChangedToOwner(bool bDroppedWeapon)
+{
+	ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(GetOwner());
+	if (BlasterCharacter)
+	{
+		if (bDroppedWeapon)
+		{
+			//这是玩家主动丢弃武器时广播弹药为0
+			BlasterCharacter->OnAmmoChanged.Broadcast(0);
+		}else
+		{
+			BlasterCharacter->OnAmmoChanged.Broadcast(Ammo);	
+		}
+	}
+	
+}
 
+void AWeapon::AddAmmo(int32 InAmmo)
+{
+	Ammo = FMath::Clamp(Ammo + InAmmo,0,MagCapacity);
+	BroadcastAmmoChangedToOwner();
+}
+
+void AWeapon::OnRep_Ammo()
+{
+	BroadcastAmmoChangedToOwner();
+}
+
+//子类中调用，因为生成弹药在服务器中
+void AWeapon::SpendRound()
+{
+	Ammo = FMath::Clamp(Ammo - 1,0,MagCapacity);
+	BroadcastAmmoChangedToOwner();
+}
+
+void AWeapon::OnRep_Owner()
+{
+	Super::OnRep_Owner();
+	
+	if (GetOwner() != nullptr)
+	{
+		BroadcastAmmoChangedToOwner();
+	}
+}
 

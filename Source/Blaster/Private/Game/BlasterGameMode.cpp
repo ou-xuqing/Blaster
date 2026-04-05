@@ -6,13 +6,29 @@
 #include "Character/BlasterCharacter.h"
 #include "GameFramework/PlayerStart.h"
 #include "Kismet/GameplayStatics.h"
+#include "Player/BlasterPlayerState.h"
 
+//ReceiveDamage中生命值为0时调用，所以只在服务器中触发
 void ABlasterGameMode::PlayerEliminated(ABlasterCharacter* ElimCharacter,
                                         ABlasterPlayerController* ElimPlayerController, ABlasterPlayerController* AttackPlayerController)
 {
-	ElimCharacter->Elim();
+	if (ElimPlayerController && AttackPlayerController)
+	{
+		ABlasterPlayerState* ElimPlayerState = ElimPlayerController->GetPlayerState<ABlasterPlayerState>();
+		ABlasterPlayerState* AttackPlayerState = AttackPlayerController->GetPlayerState<ABlasterPlayerState>();
+		if (ElimPlayerState != AttackPlayerState)
+		{
+			AttackPlayerState->AddToScore(1.f);
+			ElimPlayerState->AddToDefeats(1);
+		}
+	}
+	if (ElimCharacter)
+	{
+		ElimCharacter->Elim();
+	}
+	
 }
-
+//只会在服务器中调用
 void ABlasterGameMode::RequestRespawn(ABlasterCharacter* ElimCharacter, AController* Controller)
 {
 	if (ElimCharacter)

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "WeaponTypes.h"
 #include "GameFramework/Actor.h"
 #include "Weapon.generated.h"
 
@@ -35,9 +36,12 @@ public:
 
 	void SetWeaponState(EWeaponState InState);
 
-	void DropWeapon();
+	void DropWeapon(FVector HitTarget = FVector(0.f,0.f,0.f));
 	
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
+
+	EWeaponType GetWeaponType() const{ return WeaponType; }
+	
 	//IK用
 	USkeletalMeshComponent* GetWeaponMesh(){return WeaponMesh;}
 
@@ -62,7 +66,20 @@ public:
 	float FireDelay = 0.15f;
 	UPROPERTY(EditDefaultsOnly,Category="Weapon | AutoMatic")
 	bool bAutoMaticFire = true;
+
+	virtual void OnRep_Owner() override;
 	
+	void BroadcastAmmoChangedToOwner(bool bDroppedWeapon = false);
+
+	bool AmmoIsEmpty() const {return Ammo <= 0;}
+
+	void AddAmmo(int32 InAmmo);
+
+	int32 GetAmmo() const {return Ammo;}
+	int32 GetMagCapacity() const {return MagCapacity;}
+
+	UPROPERTY(EditDefaultsOnly,Category="Sound")
+	TObjectPtr<USoundCue> EquipSound;
 protected:
 	virtual void BeginPlay() override;
 
@@ -71,6 +88,11 @@ protected:
 
 	UFUNCTION()
 	virtual void OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+	UFUNCTION()
+	void OnRep_Ammo();
+
+	void SpendRound();
 private:	
 
 	UPROPERTY(VisibleAnywhere,Category="Weapon")
@@ -89,6 +111,9 @@ private:
 	void OnRep_WeaponState();
 
 	UPROPERTY(EditAnywhere,Category="Weapon")
+	float DropMagnitude = 1000.f;
+
+	UPROPERTY(EditAnywhere,Category="Weapon")
 	TObjectPtr<UAnimationAsset> FireAnimation;
 
 	UPROPERTY(EditAnywhere,Category="Weapon | Shell")
@@ -98,5 +123,21 @@ private:
 	float ZoomFOV = 40.f;
 	UPROPERTY(EditDefaultsOnly,Category="Weapon | Aim")
 	float ZoomInterpSpeed = 20.f;
+
+	UPROPERTY(EditDefaultsOnly,Category="Weapon | Type")
+	EWeaponType WeaponType = EWeaponType::Ewt_AssaultRifle;
+	
+	/*
+	 * AMMO
+	 * 死亡时由Character中的MElim函数广播0（枪里子弹不一定为0，但是玩家死了枪自动丢弃）
+	 * 玩家主动丢弃时广播0
+	 * 现阶段只能拿一把武器，多拿时上一把自动丢弃，不用广播，因为会触发拾取
+	 * 开火，拾取都是广播Ammo
+	 */
+	UPROPERTY(EditDefaultsOnly,ReplicatedUsing=OnRep_Ammo,Category="Weapon | Ammo")
+	int32 Ammo = 30;
+
+	UPROPERTY(EditDefaultsOnly,Category="Weapon | Ammo")
+	int32 MagCapacity = 30; 
 };
 

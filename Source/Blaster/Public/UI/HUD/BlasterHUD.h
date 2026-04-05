@@ -6,6 +6,7 @@
 #include "GameFramework/HUD.h"
 #include "BlasterHUD.generated.h"
 
+class ABlasterPlayerState;
 class UOverlayUserWidgetController;
 class ABlasterCharacter;
 class UBlasterUserWidget;
@@ -45,7 +46,7 @@ public:
 	UPROPERTY(EditDefaultsOnly,Category="Crosshair | Spread")
 	float CrosshairSpreadMagnitude = 5.f;
 
-	void InitOverlayWidget(APlayerController* InPlayerController,ABlasterCharacter* InBlasterCharacter);
+	void InitOverlayWidget(APlayerController* InPlayerController,ABlasterCharacter* InBlasterCharacter,ABlasterPlayerState* BlasterPlayerState);
 private:
 	//CombatComponent传入
 	FCrosshairPackage CrosshairPackage;

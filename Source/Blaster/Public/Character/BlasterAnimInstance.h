@@ -79,4 +79,13 @@ private:
 
 	UPROPERTY(BlueprintReadOnly,Category="Combat",meta=(AllowPrivateAccess=true))
 	bool bIsElim = false;
+
+	UPROPERTY(BlueprintReadOnly,Category="Combat",meta=(AllowPrivateAccess=true))
+	bool bUseIK = true;
+
+	UPROPERTY(BlueprintReadOnly,Category="Combat",meta=(AllowPrivateAccess=true))
+	bool bUseAimOffset = true;
+
+	UPROPERTY(BlueprintReadOnly,Category="Combat",meta=(AllowPrivateAccess=true))
+	bool bUseTransformRightHand = true;
 };

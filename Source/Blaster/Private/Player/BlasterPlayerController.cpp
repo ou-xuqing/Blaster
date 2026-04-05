@@ -71,6 +71,16 @@ void ABlasterPlayerController::SetupInputComponent()
 			EnhancedInputComponent->BindAction(ShootAction,ETriggerEvent::Started,this,&ABlasterPlayerController::Shooting);
 			EnhancedInputComponent->BindAction(ShootAction,ETriggerEvent::Completed,this,&ABlasterPlayerController::StopShoot);			
 		}
+
+		if (DropAction)
+		{
+			EnhancedInputComponent->BindAction(DropAction,ETriggerEvent::Started,this,&ABlasterPlayerController::DropWeapon);
+		}
+
+		if (ReloadAction)
+		{
+			EnhancedInputComponent->BindAction(ReloadAction,ETriggerEvent::Started,this,&ABlasterPlayerController::Reload);
+		}
 	}
 
 }
@@ -184,6 +194,30 @@ void ABlasterPlayerController::StopShoot(const FInputActionValue& InputActionVal
 		if (BlasterCharacter)
 		{
 			BlasterCharacter->ShootButtonReleased();
+		}
+	}
+}
+
+void ABlasterPlayerController::DropWeapon(const FInputActionValue& InputActionValue)
+{
+	if (APawn* ControlPawn = GetPawn())
+	{
+		ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(ControlPawn);
+		if (BlasterCharacter)
+		{
+			BlasterCharacter->DropWeapon();
+		}
+	}
+}
+
+void ABlasterPlayerController::Reload(const FInputActionValue& InputActionValue)
+{
+	if (APawn* ControlPawn = GetPawn())
+	{
+		ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(ControlPawn);
+		if (BlasterCharacter)
+		{
+			BlasterCharacter->ReloadButtonPressed();
 		}
 	}
 }

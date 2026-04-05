@@ -4,10 +4,11 @@
 #include "UI/Controller/BlasterUserWidgetController.h"
 
 void UBlasterUserWidgetController::SetControllerParams(APlayerController* InPlayerController,
-	ABlasterCharacter* InBlasterCharacter)
+	ABlasterCharacter* InBlasterCharacter,ABlasterPlayerState* InBlasterPlayerState)
 {
 	PlayerController = InPlayerController;
 	BlasterCharacter = InBlasterCharacter;
+	BlasterPlayerState = InBlasterPlayerState;
 }
 
 void UBlasterUserWidgetController::BroadcastInitialValues()

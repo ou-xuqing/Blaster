@@ -20,4 +20,5 @@ void AProjectileWeapon::WeaponFire(const FVector& HitTarget)
 		SpawnParameters.Instigator = PawnInstigator;
 		GetWorld()->SpawnActor<AProjectile>(ProjectileClass,FireLocation,FireDirection,SpawnParameters);
 	}
+	SpendRound();
 }
