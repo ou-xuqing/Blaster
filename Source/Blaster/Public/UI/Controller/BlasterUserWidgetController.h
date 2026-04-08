@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "BlasterUserWidgetController.generated.h"
 
+class ABlasterPlayerController;
 class ABlasterPlayerState;
 class ABlasterCharacter;
 /**
@@ -23,9 +24,13 @@ public:
 	
 	virtual void BindCallbacksToDependencies();
 
+	
 protected:
 	UPROPERTY()
 	TObjectPtr<APlayerController> PlayerController;
+
+	UPROPERTY()
+	TObjectPtr<ABlasterPlayerController> BlasterPlayerController;
 
 	UPROPERTY()
 	TObjectPtr<ABlasterCharacter> BlasterCharacter;

@@ -62,11 +62,6 @@ ABlasterCharacter::ABlasterCharacter()
 	SetMinNetUpdateFrequency(33);
 }
 
-void ABlasterCharacter::StopAllAnimMontage()
-{
-	GetMesh()->GetAnimInstance()->StopAllMontages(0.1f);
-}
-
 void ABlasterCharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -108,6 +103,7 @@ void ABlasterCharacter::Tick(float DeltaTime)
 	{
 		HideCharacterInCameraClose();
 	}
+
 }
 
 void ABlasterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -572,8 +568,10 @@ void ABlasterCharacter::StartDissolve()
 void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType,
 	class AController* InstigatedBy, AActor* DamageCauser)
 {
+	ABlasterPlayerController* BlasterPlayerController = Cast<ABlasterPlayerController>(GetController());
+	if (BlasterPlayerController->GetMatchState() != "InProgress") return;
 	Health = FMath::Clamp(Health-Damage,0.f,MaxHealth);
-
+	
 	//RPC的开销比复制要大，所以不用多播RPC而是在服务器和复制函数中调用执行montage
 	PlayHitReactMontage();
 	OnHealthChanged.Broadcast(Health);
@@ -635,4 +633,9 @@ void ABlasterCharacter::MulticastElim_Implementation()
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	DisableInput(Cast<APlayerController>(GetController()));
+}
+
+void ABlasterCharacter::StopAllAnimMontage()
+{
+	GetMesh()->GetAnimInstance()->StopAllMontages(0.1f);
 }

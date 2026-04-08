@@ -15,6 +15,8 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnAttributeChanged, float);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnAmmoChanged,int32);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnCarriedAmmoChanged,int32);
 
+
+
 class UCameraComponent;
 class UCombatComponent;
 class AWeapon;
@@ -109,7 +111,7 @@ public:
 	FOnCarriedAmmoChanged OnCarriedAmmoChanged;
 
 	void StopAllAnimMontage();
-
+	
 protected:
 	virtual void BeginPlay() override;
 
@@ -135,7 +137,6 @@ protected:
 	void ReceiveDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
 
 	void ElimTimerFinished();
-	
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Camera")
 	TObjectPtr<class USpringArmComponent> SpringArm;

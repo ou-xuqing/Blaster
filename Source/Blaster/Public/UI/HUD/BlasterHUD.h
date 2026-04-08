@@ -6,6 +6,7 @@
 #include "GameFramework/HUD.h"
 #include "BlasterHUD.generated.h"
 
+class UAnnouncementWidget;
 class ABlasterPlayerState;
 class UOverlayUserWidgetController;
 class ABlasterCharacter;
@@ -47,6 +48,17 @@ public:
 	float CrosshairSpreadMagnitude = 5.f;
 
 	void InitOverlayWidget(APlayerController* InPlayerController,ABlasterCharacter* InBlasterCharacter,ABlasterPlayerState* BlasterPlayerState);
+
+	void InitAnnouncementWidget();
+
+	void HideAnnouncementWidget();
+
+	void HideOverlayWidget();
+	
+	UPROPERTY()
+	TObjectPtr<UAnnouncementWidget> AnnouncementWidget;
+	UPROPERTY(EditDefaultsOnly,Category="Widget")
+	TSubclassOf<UUserWidget> AnnouncementWidgetClass;
 private:
 	//CombatComponent传入
 	FCrosshairPackage CrosshairPackage;
@@ -60,4 +72,5 @@ private:
 	TObjectPtr<UOverlayUserWidgetController> OverlayWidgetController;
 	UPROPERTY(EditDefaultsOnly,Category="Widget | Controller")
 	TSubclassOf<UOverlayUserWidgetController> OverlayWidgetControllerClass;
+
 };

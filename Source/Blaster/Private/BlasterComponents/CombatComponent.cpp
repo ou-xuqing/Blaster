@@ -237,7 +237,7 @@ void UCombatComponent::FireTimerFinished()
 	{
 		Fire();
 	}
-	if (EquippedWeapon->AmmoIsEmpty())
+	if (EquippedWeapon && EquippedWeapon->AmmoIsEmpty())
 	{
 		Reload();
 	}

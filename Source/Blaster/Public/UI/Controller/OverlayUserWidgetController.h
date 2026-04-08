@@ -11,6 +11,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnScoreChangedSignatrue,float,Score
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDefeatsChangedSignatrue,int32,Defeat);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAmmoChangedSignatrue,int32,Ammo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCarriedAmmoChangedSignatrue,int32,CarriedAmmo);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameTimeChangedSignatrue,float,InTime);
 /**
  * 
  */
@@ -42,4 +43,8 @@ public:
 	UPROPERTY(BlueprintAssignable,Category="PlayerState")
 	FOnScoreChangedSignatrue OnScoreChangedDelegate;
 	FDelegateHandle OnScoreChangedDelegateHandle;
+
+	UPROPERTY(BlueprintAssignable,Category="GameMode")
+	FOnGameTimeChangedSignatrue OnGameTimeChangedDelegate;
+	FDelegateHandle OnGameTimeChangedDelegateHandle;
 };

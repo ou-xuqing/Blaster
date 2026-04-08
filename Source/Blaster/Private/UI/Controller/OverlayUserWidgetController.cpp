@@ -4,6 +4,7 @@
 #include "UI/Controller/OverlayUserWidgetController.h"
 
 #include "Character/BlasterCharacter.h"
+#include "Player/BlasterPlayerController.h"
 #include "Player/BlasterPlayerState.h"
 
 void UOverlayUserWidgetController::BroadcastInitialValues()
@@ -70,6 +71,19 @@ void UOverlayUserWidgetController::BindCallbacksToDependencies()
 		OnDefeatsChangedDelegateHandle = BlasterPlayerState->OnDefeatsChanged.AddLambda([this](int32 NewDefeat)
 		{
 			OnDefeatsChangedDelegate.Broadcast(NewDefeat);
+		});
+	}
+
+	if (BlasterPlayerController)
+	{
+		if (OnGameTimeChangedDelegateHandle.IsValid())
+		{
+			BlasterPlayerController->OnGameTimeChanged.Remove(OnGameTimeChangedDelegateHandle);
+		}
+		
+		OnGameTimeChangedDelegateHandle = BlasterPlayerController->OnGameTimeChanged.AddLambda([this](float NewTime)
+		{
+			OnGameTimeChangedDelegate.Broadcast(NewTime);
 		});
 	}
 }

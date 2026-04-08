@@ -4,7 +4,9 @@
 #include "UI/HUD/BlasterHUD.h"
 
 #include "Blueprint/UserWidget.h"
+#include "Player/BlasterPlayerController.h"
 #include "UI/Controller/OverlayUserWidgetController.h"
+#include "UI/Widget/AnnouncementWidget.h"
 #include "UI/Widget/BlasterUserWidget.h"
 
 void ABlasterHUD::DrawHUD()
@@ -75,5 +77,44 @@ void ABlasterHUD::InitOverlayWidget(APlayerController* InPlayerController,ABlast
 		}
 		checkf(OverlayWidgetController,TEXT("OverlayWidgetController Init False"))
 		OverlayWidgetController->BroadcastInitialValues();
+	}
+}
+//先隐藏，看后续要不要删除
+void ABlasterHUD::HideOverlayWidget()
+{
+	if (OverlayWidget)
+	{
+		OverlayWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
+}
+
+void ABlasterHUD::InitAnnouncementWidget()
+{
+	checkf(AnnouncementWidgetClass,TEXT("AnnouncementWidgetClass is null"));
+	
+	if (AnnouncementWidget == nullptr)
+	{
+		ABlasterPlayerController* BlasterPlayerController = Cast<ABlasterPlayerController>(GetOwningPlayerController());
+		if (BlasterPlayerController && AnnouncementWidgetClass)
+		{
+			AnnouncementWidget =Cast<UAnnouncementWidget>(CreateWidget(BlasterPlayerController,AnnouncementWidgetClass));
+		}
+		if (AnnouncementWidget)
+		{
+			AnnouncementWidget->AddToViewport();
+		}
+	}
+
+	if (AnnouncementWidget)
+	{
+		AnnouncementWidget->SetVisibility(ESlateVisibility::Visible);
+	}
+}
+
+void ABlasterHUD::HideAnnouncementWidget()
+{
+	if (AnnouncementWidget && IsValid(AnnouncementWidget))
+	{
+		AnnouncementWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 }
