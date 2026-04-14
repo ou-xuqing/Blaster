@@ -7,6 +7,7 @@
 #include "Character/BlasterCharacter.h"
 #include "Components/SphereComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
 
 // Sets default values
@@ -22,8 +23,13 @@ AWeapon::AWeapon()
 	//丢弃的时候开启会有物理效果
 	WeaponMesh->SetCollisionResponseToAllChannels(ECR_Block);
 	WeaponMesh->SetCollisionResponseToChannel(ECC_Pawn,ECR_Ignore);
+	WeaponMesh->SetCollisionResponseToChannel(ECC_Camera,ECR_Ignore);
 	WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
+	
+	WeaponMesh->SetCustomDepthStencilValue(CUSTOM_DEPTH_PURPLE);
+	WeaponMesh->MarkRenderStateDirty();
+	EnableWeaponMeshRenderCustomDepth(true);
+	
 	Sphere = CreateDefaultSubobject<USphereComponent>("Sphere");
 	Sphere->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Sphere->SetCollisionResponseToChannel(ECC_Pawn,ECR_Overlap);
@@ -45,6 +51,14 @@ void AWeapon::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLif
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AWeapon,WeaponState);
 	DOREPLIFETIME(AWeapon,Ammo);
+}
+
+void AWeapon::EnableWeaponMeshRenderCustomDepth(bool bInEnable)
+{
+	if (WeaponMesh)
+	{
+		WeaponMesh->SetRenderCustomDepth(bInEnable && bUseOutLine);
+	}
 }
 
 void AWeapon::BeginPlay()
@@ -82,7 +96,7 @@ void AWeapon::OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActo
 }
 
 //本地执行，因为在多播中调用
-void AWeapon::WeaponFire(const FVector& HitTarget)
+void AWeapon::WeaponFire(const FVector& HitTarget,bool bIsContinueFire)
 {
 	if (FireAnimation)
 	{
@@ -98,6 +112,19 @@ void AWeapon::WeaponFire(const FVector& HitTarget)
 	}
 }
 
+FVector AWeapon::CalculateShotSpread(const FVector& Start,const FVector& Target,float AdditiveScatter)
+{
+	const FVector ToTarget = (Target - Start).GetSafeNormal();
+	const FVector SphereCenter = Start + ToTarget * DistanceToSphere;
+
+	const float CurrentScatterRadius = FMath::Max(0.f, SphereScatter + AdditiveScatter);
+	const FVector RandVec = UKismetMathLibrary::RandomUnitVector() * FMath::FRandRange(0.f, CurrentScatterRadius);
+	const FVector EndVec = SphereCenter + RandVec;
+	const FVector ToEndVec = (EndVec - Start).GetSafeNormal();
+	
+	return ToEndVec;
+}
+
 void AWeapon::SetWeaponState(EWeaponState InState)
 {
 	WeaponState = InState;
@@ -105,10 +132,16 @@ void AWeapon::SetWeaponState(EWeaponState InState)
 	{
 		ShowPickupText(false);
 		Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		
+		EnableWeaponMeshRenderCustomDepth(false);
 		WeaponMesh->SetEnableGravity(false);
 		WeaponMesh->SetSimulatePhysics(false);
 		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		if (WeaponType == EWeaponType::Ewt_Smg)
+		{
+			WeaponMesh->SetEnableGravity(true);
+			WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			WeaponMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		}
 	}
 	if (WeaponState == EWeaponState::Ews_Dropped)
 	{
@@ -117,10 +150,14 @@ void AWeapon::SetWeaponState(EWeaponState InState)
 			//在服务器中启动球形碰撞（因为该碰撞只在服务器中绑定函数）
 			Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 		}
-		//设置顺序不能乱，因为会警告
+		EnableWeaponMeshRenderCustomDepth(true);
+		//设置顺序不能乱，因为会警告。后面设置Channels是为了SMG
 		WeaponMesh->SetEnableGravity(true);
 		WeaponMesh->SetSimulatePhysics(true);
 		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		WeaponMesh->SetCollisionResponseToAllChannels(ECR_Block);
+		WeaponMesh->SetCollisionResponseToChannel(ECC_Camera,ECR_Ignore);
+		WeaponMesh->SetCollisionResponseToChannel(ECC_Pawn,ECR_Ignore);
 	}
 }
 
@@ -130,7 +167,7 @@ void AWeapon::DropWeapon(FVector HitTarget)
 	SetWeaponState(EWeaponState::Ews_Dropped);
 	const FDetachmentTransformRules DetachmentTransformRules(EDetachmentRule::KeepWorld,true);
 	WeaponMesh->DetachFromComponent(DetachmentTransformRules);
-	FVector DropDirection = (HitTarget); 
+	FVector DropDirection = HitTarget;
 	DropDirection.Normalize();
 	WeaponMesh->AddImpulse(DropDirection * DropMagnitude);
 	SetOwner(nullptr);
@@ -152,12 +189,23 @@ void AWeapon::OnRep_WeaponState()
 		WeaponMesh->SetEnableGravity(false);
 		WeaponMesh->SetSimulatePhysics(false);
 		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		EnableWeaponMeshRenderCustomDepth(false);
+		if (WeaponType == EWeaponType::Ewt_Smg)
+		{
+			WeaponMesh->SetEnableGravity(true);
+			WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			WeaponMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		}
 	}
 	if (WeaponState == EWeaponState::Ews_Dropped)
 	{
+		EnableWeaponMeshRenderCustomDepth(true);
 		WeaponMesh->SetEnableGravity(true);
 		WeaponMesh->SetSimulatePhysics(true);
 		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		WeaponMesh->SetCollisionResponseToAllChannels(ECR_Block);
+		WeaponMesh->SetCollisionResponseToChannel(ECC_Camera,ECR_Ignore);
+		WeaponMesh->SetCollisionResponseToChannel(ECC_Pawn,ECR_Ignore);
 	}
 }
 
@@ -187,6 +235,14 @@ void AWeapon::AddAmmo(int32 InAmmo)
 void AWeapon::OnRep_Ammo()
 {
 	BroadcastAmmoChangedToOwner();
+	if (AmmoIsFull())
+	{
+		if (ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(GetOwner()))
+		{
+			BlasterCharacter->JumpToShotGunEnd();
+		}
+		
+	}
 }
 
 //子类中调用，因为生成弹药在服务器中

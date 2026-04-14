@@ -14,6 +14,7 @@ void UOverlayUserWidgetController::BroadcastInitialValues()
 		BlasterCharacter->OnHealthChanged.Broadcast(GetMaxHealth());
 		BlasterCharacter->OnAmmoChanged.Broadcast(0);
 		BlasterCharacter->OnCarriedAmmoChanged.Broadcast(0);
+		BlasterCharacter->OnGrenadeAmountChanged.Broadcast(BlasterCharacter->GetCurrentGrenadeAmount());
 	}
 	if (BlasterPlayerState)
 	{
@@ -39,6 +40,10 @@ void UOverlayUserWidgetController::BindCallbacksToDependencies()
 		{
 			BlasterCharacter->OnCarriedAmmoChanged.Remove(OnCarriedAmmoChangedDelegateHandle);
 		}
+		if (OnGrenadeChangedDelegateHandle.IsValid())
+		{
+			BlasterCharacter->OnGrenadeAmountChanged.Remove(OnGrenadeChangedDelegateHandle);
+		}
 		OnHealthChangedDelegateHandle = BlasterCharacter->OnHealthChanged.AddLambda([this](float NewHealth)
 		{
 			OnHealthChangedDelegate.Broadcast(NewHealth);
@@ -50,6 +55,10 @@ void UOverlayUserWidgetController::BindCallbacksToDependencies()
 		OnCarriedAmmoChangedDelegateHandle = BlasterCharacter->OnCarriedAmmoChanged.AddLambda([this](int32 NewCarriedAmmo)
 		{
 			OnCarriedAmmoChangedDelegate.Broadcast(NewCarriedAmmo);
+		});
+		OnGrenadeChangedDelegateHandle = BlasterCharacter->OnGrenadeAmountChanged.AddLambda([this](int32 NewGrenade)
+		{
+			OnGrenadeChangedDelegate.Broadcast(NewGrenade);
 		});
 	}
 

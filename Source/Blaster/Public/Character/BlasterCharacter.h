@@ -14,7 +14,7 @@ class UTimelineComponent;
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnAttributeChanged, float);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnAmmoChanged,int32);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnCarriedAmmoChanged,int32);
-
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnGrenadeAmountChanged,int32);
 
 
 class UCameraComponent;
@@ -75,6 +75,8 @@ public:
 
 	void ReloadButtonPressed() const;
 
+	void ThrowButtonPressed() const;
+
 	virtual void Jump() override;
 
 	void DropWeapon() const;
@@ -103,14 +105,23 @@ public:
 	UFUNCTION(NetMulticast,Reliable)
 	void MulticastElim();
 
+	void PlayThrowGrenadeMontage();
+	
 	void PlayReloadMontage();
+
+	void JumpToShotGunEnd();
 	
 	//Ammo,这是我的判断：武器所有者是Character，UIController拥有Character，所以通过Character来中转
 	FOnAmmoChanged OnAmmoChanged;
 
 	FOnCarriedAmmoChanged OnCarriedAmmoChanged;
 
+	FOnGrenadeAmountChanged OnGrenadeAmountChanged;
+
 	void StopAllAnimMontage();
+
+	UFUNCTION(BlueprintImplementableEvent)
+	void ShowSniperScope(bool bShow);
 	
 protected:
 	virtual void BeginPlay() override;
@@ -153,6 +164,9 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_OverlappingWeapon)
 	TObjectPtr<AWeapon> OverlappingWeapon;
 
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<UStaticMeshComponent> GrenadeComponent;
+
 	UFUNCTION()
 	void OnRep_OverlappingWeapon(AWeapon* LastWeapon);
 
@@ -182,6 +196,9 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Combat")
 	TObjectPtr<UAnimMontage> ReloadMontage;
+	
+	UPROPERTY(EditAnywhere, Category = "Combat")
+	TObjectPtr<UAnimMontage> ThrowGrenadeMontage;
 	
 	//生命值
 	UPROPERTY(EditDefaultsOnly,Category="PlayerState")
@@ -215,8 +232,6 @@ private:
 	void UpdateDissolveMaterial(float DissolveValue);
 	void StartDissolve();
 	
-
-	
 public:
 	UCameraComponent* GetCamera() const { return FollowCamera; }
 	
@@ -233,4 +248,9 @@ public:
 	bool GetIsElim() const {return bIsElim;}
 
 	ECombatState GetCombatState() const {return CombatComponent ? CombatComponent->CombatState : ECombatState::Ecs_Max;}
+
+	UStaticMeshComponent* GetGrenadeMesh() const {return GrenadeComponent;}
+
+	int32 GetStartingGrenadeAmount() const {return CombatComponent ? CombatComponent->StartingGrenade : 0;}
+	int32 GetCurrentGrenadeAmount() const {return CombatComponent ? CombatComponent->CurrentGrenade : 0;}
 };

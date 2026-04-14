@@ -42,29 +42,31 @@ public:
 
 	EWeaponType GetWeaponType() const{ return WeaponType; }
 	
+	void EnableWeaponMeshRenderCustomDepth(bool bInEnable);
+	
 	//IK用
 	USkeletalMeshComponent* GetWeaponMesh(){return WeaponMesh;}
 
-	virtual void WeaponFire(const FVector& HitTarget);
+	virtual void WeaponFire(const FVector& HitTarget,bool bIsContinueFire = false);
 	
 	//准星贴图
-	UPROPERTY(EditAnywhere,Category="Crosshair")
+	UPROPERTY(EditAnywhere,Category="WeaponData | Crosshair")
 	TObjectPtr<UTexture2D> CrosshairCenter;
-	UPROPERTY(EditAnywhere,Category="Crosshair")
+	UPROPERTY(EditAnywhere,Category="WeaponData | Crosshair")
 	TObjectPtr<UTexture2D> CrosshairLeft;
-	UPROPERTY(EditAnywhere,Category="Crosshair")
+	UPROPERTY(EditAnywhere,Category="WeaponData | Crosshair")
 	TObjectPtr<UTexture2D> CrosshairRight;
-	UPROPERTY(EditAnywhere,Category="Crosshair")
+	UPROPERTY(EditAnywhere,Category="WeaponData | Crosshair")
 	TObjectPtr<UTexture2D> CrosshairTop;
-	UPROPERTY(EditAnywhere,Category="Crosshair")
+	UPROPERTY(EditAnywhere,Category="WeaponData | Crosshair")
 	TObjectPtr<UTexture2D> CrosshairBottom;
 
 	float GetZoomFOV() const {return ZoomFOV;}
 	float GetZoomInterpSpeed() const {return ZoomInterpSpeed;}
 
-	UPROPERTY(EditDefaultsOnly,Category="Weapon | AutoMatic")
+	UPROPERTY(EditDefaultsOnly,Category="WeaponData | AutoMatic")
 	float FireDelay = 0.15f;
-	UPROPERTY(EditDefaultsOnly,Category="Weapon | AutoMatic")
+	UPROPERTY(EditDefaultsOnly,Category="WeaponData | AutoMatic")
 	bool bAutoMaticFire = true;
 
 	virtual void OnRep_Owner() override;
@@ -72,16 +74,19 @@ public:
 	void BroadcastAmmoChangedToOwner(bool bDroppedWeapon = false);
 
 	bool AmmoIsEmpty() const {return Ammo <= 0;}
-
+	bool AmmoIsFull() const {return Ammo == MagCapacity;}
+	
 	void AddAmmo(int32 InAmmo);
 
 	int32 GetAmmo() const {return Ammo;}
 	int32 GetMagCapacity() const {return MagCapacity;}
 
-	UPROPERTY(EditDefaultsOnly,Category="Sound")
+	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Sound")
 	TObjectPtr<USoundCue> EquipSound;
 protected:
 	virtual void BeginPlay() override;
+
+	FVector CalculateShotSpread(const FVector& Start,const FVector& Target,float AdditiveScatter = 0.f);
 
 	UFUNCTION()
 	virtual void OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
@@ -93,6 +98,18 @@ protected:
 	void OnRep_Ammo();
 
 	void SpendRound();
+
+	UPROPERTY(EditAnywhere,Category="WeaponData | Scatter")
+	bool bIsScatter = true;
+
+	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Scatter",meta=(EditCondition="bIsScatter"))
+	float SphereScatter = 35.f;
+
+	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Scatter",meta=(EditCondition="bIsScatter"))
+	float DistanceToSphere = 150.f;
+
+	UPROPERTY(EditAnywhere,Category="WeaponData | OutLine")
+	bool bUseOutLine = false;
 private:	
 
 	UPROPERTY(VisibleAnywhere,Category="Weapon")
@@ -101,7 +118,7 @@ private:
 	UPROPERTY(VisibleAnywhere,Category="Weapon")
 	TObjectPtr<USphereComponent> Sphere;
 	
-	UPROPERTY(ReplicatedUsing=OnRep_WeaponState,VisibleAnywhere,Category="Weapon | State")
+	UPROPERTY(ReplicatedUsing=OnRep_WeaponState,VisibleAnywhere,Category="WeaponData | State")
 	EWeaponState WeaponState = EWeaponState::Ews_Initial;
 
 	UPROPERTY(VisibleAnywhere,Category="Weapon")
@@ -110,21 +127,21 @@ private:
 	UFUNCTION()
 	void OnRep_WeaponState();
 
-	UPROPERTY(EditAnywhere,Category="Weapon")
+	UPROPERTY(EditAnywhere,Category="WeaponData | Drop")
 	float DropMagnitude = 1000.f;
 
-	UPROPERTY(EditAnywhere,Category="Weapon")
+	UPROPERTY(EditAnywhere,Category="WeaponData | Fire")
 	TObjectPtr<UAnimationAsset> FireAnimation;
 
-	UPROPERTY(EditAnywhere,Category="Weapon | Shell")
+	UPROPERTY(EditAnywhere,Category="WeaponData | Shell")
 	TSubclassOf<ACasing> CasingClass;
 
-	UPROPERTY(EditDefaultsOnly,Category="Weapon | Aim")
+	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Aim")
 	float ZoomFOV = 40.f;
-	UPROPERTY(EditDefaultsOnly,Category="Weapon | Aim")
+	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Aim")
 	float ZoomInterpSpeed = 20.f;
 
-	UPROPERTY(EditDefaultsOnly,Category="Weapon | Type")
+	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Type")
 	EWeaponType WeaponType = EWeaponType::Ewt_AssaultRifle;
 	
 	/*
@@ -134,10 +151,10 @@ private:
 	 * 现阶段只能拿一把武器，多拿时上一把自动丢弃，不用广播，因为会触发拾取
 	 * 开火，拾取都是广播Ammo
 	 */
-	UPROPERTY(EditDefaultsOnly,ReplicatedUsing=OnRep_Ammo,Category="Weapon | Ammo")
+	UPROPERTY(EditDefaultsOnly,ReplicatedUsing=OnRep_Ammo,Category="WeaponData | Ammo")
 	int32 Ammo = 30;
 
-	UPROPERTY(EditDefaultsOnly,Category="Weapon | Ammo")
+	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Ammo")
 	int32 MagCapacity = 30; 
 };
 

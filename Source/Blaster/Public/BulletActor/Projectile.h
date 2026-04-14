@@ -19,6 +19,8 @@ class BLASTER_API AProjectile : public AActor
 	
 public:	
 	AProjectile();
+	void SpawnTracerEffect();
+	void SpawnWhipSound();
 	virtual void Tick(float DeltaTime) override;
 
 	virtual void Destroyed() override;
@@ -28,21 +30,37 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-private:
+	void StartDestroyTimer();
+
+	void DestroyTimerFinished();
+	
+	UPROPERTY(EditDefaultsOnly,Category="BulletData | Damage")
+	float Damage = 20.f;
+	
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<UStaticMeshComponent> ProjectileMesh;
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<UProjectileMovementComponent> ProjectileMovementComponent;
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UBoxComponent> CollisionBox;
 
-	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<UProjectileMovementComponent> ProjectileMovementComponent;
-
-	UPROPERTY(EditAnywhere,Category="Particle")
+	UPROPERTY(EditAnywhere,Category="BulletData | DSound")
+	TObjectPtr<USoundCue> WhipSound;
+	
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UAudioComponent> AudioComponent;
+private:
+	UPROPERTY(EditAnywhere,Category="BulletData | DParticle")
 	TObjectPtr<UParticleSystem> Tracer;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UParticleSystemComponent> TracerSystemComponent;
-	UPROPERTY(EditAnywhere,Category="Particle")
+	UPROPERTY(EditAnywhere,Category="BulletData | DParticle")
 	TObjectPtr<UParticleSystem> ImpactParticle;
 
-	UPROPERTY(EditAnywhere,Category="Sound")
+	UPROPERTY(EditAnywhere,Category="BulletData | DSound")
 	TObjectPtr<USoundCue> ImpactSound;
 	
+	FTimerHandle DestroyTimerHandle;
+	UPROPERTY(EditDefaultsOnly,Category="BulletData | DelayDestroy")
+	float DestroyDelay = 3.f;
 };

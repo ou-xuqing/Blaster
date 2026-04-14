@@ -1,7 +1,7 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "Character//BlasterCharacter.h"
+#include "Character/BlasterCharacter.h"
 
 #include "Blaster/Blaster.h"
 #include "BlasterComponents/CombatComponent.h"
@@ -60,6 +60,10 @@ ABlasterCharacter::ABlasterCharacter()
 	//修改网络复制频率
 	SetNetUpdateFrequency(66);
 	SetMinNetUpdateFrequency(33);
+
+	GrenadeComponent = CreateDefaultSubobject<UStaticMeshComponent>("GrenadeComponent");
+	GrenadeComponent->SetupAttachment(GetMesh(),FName("GrenadeSocket"));
+	GrenadeComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
 void ABlasterCharacter::BeginPlay()
@@ -71,7 +75,7 @@ void ABlasterCharacter::BeginPlay()
 	{
 		OnTakeAnyDamage.AddDynamic(this,&ABlasterCharacter::ReceiveDamage);
 	}
-	
+	GrenadeComponent->SetVisibility(false);
 }
 
 void ABlasterCharacter::Tick(float DeltaTime)
@@ -103,7 +107,7 @@ void ABlasterCharacter::Tick(float DeltaTime)
 	{
 		HideCharacterInCameraClose();
 	}
-
+	
 }
 
 void ABlasterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -365,7 +369,6 @@ void ABlasterCharacter::PlayHitReactMontage()
 
 void ABlasterCharacter::PlayElimMontage()
 {
-
 	if (CombatComponent)
 	{
 		UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
@@ -376,6 +379,19 @@ void ABlasterCharacter::PlayElimMontage()
 	}
 }
 
+void ABlasterCharacter::PlayThrowGrenadeMontage()
+{
+	if (CombatComponent && CombatComponent->EquippedWeapon)
+	{
+		UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+		if (AnimInstance && ThrowGrenadeMontage)
+		{
+			AnimInstance->Montage_Play(ThrowGrenadeMontage);
+		}
+	}
+}
+
+//TODO::霰弹枪动画（可以单发换单，然后射击）
 void ABlasterCharacter::PlayReloadMontage()
 {
 	if (CombatComponent && CombatComponent->EquippedWeapon)
@@ -388,8 +404,49 @@ void ABlasterCharacter::PlayReloadMontage()
 			if (WeaponType == EWeaponType::Ewt_AssaultRifle)
 			{
 				SectionName = FName("Rifle");
+			}else if (WeaponType == EWeaponType::Ewt_RocketLauncher)
+			{
+				SectionName = FName("RocketLauncher");
+			}else if (WeaponType == EWeaponType::Ewt_Pistol)
+			{
+				SectionName = FName("Pistol");
+			}else if (WeaponType == EWeaponType::Ewt_Smg)
+			{
+				SectionName = FName("Pistol");
+			}
+			else if (WeaponType == EWeaponType::Ewt_ShotGun)
+			{
+				SectionName = FName("ShotGun");
+			}
+			else if (WeaponType == EWeaponType::Ewt_Sniper)
+			{
+				SectionName = FName("Sniper");
+			}
+			else if (WeaponType == EWeaponType::Ewt_GrenadeLauncher)
+			{
+				SectionName = FName("ShotGun");
 			}
 			AnimInstance->Montage_Play(ReloadMontage);
+			AnimInstance->Montage_JumpToSection(SectionName);
+		}
+	}
+}
+
+void ABlasterCharacter::JumpToShotGunEnd()
+{
+	if (CombatComponent && CombatComponent->EquippedWeapon)
+	{
+		const EWeaponType WeaponType = CombatComponent->EquippedWeapon->GetWeaponType();
+		if (WeaponType != EWeaponType::Ewt_ShotGun && WeaponType != EWeaponType::Ewt_GrenadeLauncher)
+		{
+			return;
+		}
+
+		UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+		if (AnimInstance && ReloadMontage)
+		{
+			FName SectionName("ShotGunEnd");
+			//Montage通过Section分段
 			AnimInstance->Montage_JumpToSection(SectionName);
 		}
 	}
@@ -400,6 +457,7 @@ void ABlasterCharacter::EquippedButtonPressed()
 {
 	if (CombatComponent)
 	{
+		if (CombatComponent->CombatState == ECombatState::Ecs_ThrowGrenade) return;
 		if (HasAuthority())
 		{
 			CombatComponent->EquipWeapon(OverlappingWeapon);
@@ -415,6 +473,7 @@ void ABlasterCharacter::ServerEquippedButtonPressed_Implementation()
 {
 	if (CombatComponent)
 	{
+		if (CombatComponent->CombatState == ECombatState::Ecs_ThrowGrenade) return;
 		CombatComponent->EquipWeapon(OverlappingWeapon);
 	}
 }
@@ -494,6 +553,7 @@ void ABlasterCharacter::ShootButtonPressed() const
 {
 	if (CombatComponent && CombatComponent->EquippedWeapon)
 	{
+		if (CombatComponent->CombatState == ECombatState::Ecs_ThrowGrenade) return;
 		CombatComponent->ShootButtonPress(true);
 	}
 }
@@ -510,7 +570,17 @@ void ABlasterCharacter::ReloadButtonPressed() const
 {
 	if (CombatComponent && CombatComponent->EquippedWeapon)
 	{
+		if (CombatComponent->CombatState == ECombatState::Ecs_ThrowGrenade) return;
 		CombatComponent->Reload();
+	}
+}
+
+void ABlasterCharacter::ThrowButtonPressed() const
+{
+	if (CombatComponent && CombatComponent->EquippedWeapon)
+	{
+		if (CombatComponent->CombatState != ECombatState::Ecs_Unoccupied) return;
+		CombatComponent->ThrowGrenade();
 	}
 }
 
@@ -569,11 +639,13 @@ void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const 
 	class AController* InstigatedBy, AActor* DamageCauser)
 {
 	ABlasterPlayerController* BlasterPlayerController = Cast<ABlasterPlayerController>(GetController());
+	if (BlasterPlayerController == nullptr) return;
 	if (BlasterPlayerController->GetMatchState() != "InProgress") return;
 	Health = FMath::Clamp(Health-Damage,0.f,MaxHealth);
 	
 	//RPC的开销比复制要大，所以不用多播RPC而是在服务器和复制函数中调用执行montage
 	PlayHitReactMontage();
+	if (CombatComponent) CombatComponent->CombatState = ECombatState::Ecs_Unoccupied;
 	OnHealthChanged.Broadcast(Health);
 
 	//生命值为0时淘汰
@@ -600,6 +672,7 @@ void ABlasterCharacter::Elim()
 {
 	if (CombatComponent && CombatComponent->EquippedWeapon)
 	{
+		
 		//死亡时丢弃武器，后面设为nullptr只是保障
 		CombatComponent->EquippedWeapon->DropWeapon(FVector(0.f,0.f,0.f));
 		CombatComponent->EquippedWeapon = nullptr;
@@ -616,7 +689,10 @@ void ABlasterCharacter::Elim()
 void ABlasterCharacter::MulticastElim_Implementation()
 {
 	bIsElim = true;
-	
+	if (IsLocallyControlled())
+	{
+		ShowSniperScope(false);
+	}
 	PlayElimMontage();
 	//开始溶解
 	if (DissolveMaterialInstance)

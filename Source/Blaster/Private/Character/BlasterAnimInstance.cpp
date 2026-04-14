@@ -105,7 +105,9 @@ void UBlasterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		}
 	}
 
-	bUseIK = BlasterCharacter->GetCombatState() != ECombatState::Ecs_Reloading;
-	bUseAimOffset = BlasterCharacter->GetCombatState() != ECombatState::Ecs_Reloading;
-	bUseTransformRightHand = BlasterCharacter->GetCombatState() != ECombatState::Ecs_Reloading;
+	const ECombatState CombatState = BlasterCharacter->GetCombatState();
+	bUseIK = CombatState != ECombatState::Ecs_Reloading && CombatState != ECombatState::Ecs_ThrowGrenade;
+	bUseAimOffset = CombatState != ECombatState::Ecs_Reloading;
+	bUseTransformRightHand = CombatState != ECombatState::Ecs_Reloading && CombatState != ECombatState::Ecs_ThrowGrenade;
+	
 }

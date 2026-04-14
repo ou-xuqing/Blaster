@@ -103,6 +103,11 @@ void ABlasterPlayerController::SetupInputComponent()
 		{
 			EnhancedInputComponent->BindAction(ReloadAction,ETriggerEvent::Started,this,&ABlasterPlayerController::Reload);
 		}
+
+		if (ThrowGrenadeAction)
+		{
+			EnhancedInputComponent->BindAction(ThrowGrenadeAction,ETriggerEvent::Started,this,&ABlasterPlayerController::ThrowGrenade);
+		}
 	}
 
 }
@@ -261,6 +266,18 @@ void ABlasterPlayerController::Reload(const FInputActionValue& InputActionValue)
 	}
 }
 
+void ABlasterPlayerController::ThrowGrenade(const FInputActionValue& InputActionValue)
+{
+	if (APawn* ControlPawn = GetPawn())
+	{
+		ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(ControlPawn);
+		if (BlasterCharacter)
+		{
+			BlasterCharacter->ThrowButtonPressed();
+		}
+	}
+}
+
 void ABlasterPlayerController::OnMatchStateSet(FName InMatchState)
 {
 	MatchState = InMatchState;
@@ -283,7 +300,10 @@ void ABlasterPlayerController::HandleMatchState()
 	{
 		if (IsLocalController())
 		{
-			BlasterHUD->HideAnnouncementWidget();
+			if (BlasterHUD)
+			{
+				BlasterHUD->HideAnnouncementWidget();
+			}
 		}
 	}else if (MatchState == MatchState::Cooldown)
 	{

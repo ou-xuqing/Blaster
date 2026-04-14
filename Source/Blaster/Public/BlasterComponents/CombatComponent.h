@@ -10,6 +10,7 @@
 #include "CombatComponent.generated.h"
 
 
+class AProjectile;
 enum class EWeaponType : uint8;
 class ABlasterHUD;
 class ABlasterPlayerController;
@@ -26,7 +27,11 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	friend ABlasterCharacter;
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
-	
+	void ReloadWeaponWhenAmmoEmpty();
+	void UpdateCarriedAmmoWhenEquip();
+	void PlayWeaponEquipSound();
+	void AttachActorToRightHand(AActor* InAttachActor);
+	void AttachActorToLeftHand(AActor* InAttachActor);
 	void EquipWeapon(AWeapon* InWeapon);
 	void Fire();
 
@@ -44,7 +49,19 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void FinishReloading();
-	
+	UFUNCTION(BlueprintCallable)
+	void ShotGunReloadOneAmmo();
+
+	void ThrowGrenade();
+	UFUNCTION(Server,Reliable)
+	void ServerThrowGrenade();
+	UFUNCTION(BlueprintCallable)
+	void ThrowGrenadeFinished();
+	void ShowGrenade(bool bInShowedGrenade);
+	UFUNCTION(BlueprintCallable)
+	void LaunchGrenade();
+	UFUNCTION(Server,Reliable)
+	void ServerLaunchGrenade(const FVector_NetQuantize& Target);
 protected:
 	virtual void BeginPlay() override;
 
@@ -58,10 +75,10 @@ protected:
 	 * 使用FVector_NetQuantize来传输就不需要给HitTarget设置一个复制标志
 	 */
 	UFUNCTION(Server,Reliable)
-	void ServerWeaponFire(const FVector_NetQuantize& HitTarget);
-
+	void ServerWeaponFire(const FVector_NetQuantize& HitTarget,bool bInContinueFire);
+	
 	UFUNCTION(NetMulticast,Reliable)
-	void MulticastWeaponFire(const FVector_NetQuantize& HitTarget);
+	void MulticastWeaponFire(const FVector_NetQuantize& HitTarget,bool bInContinueFire);
 
 	void StartFireTimer();
 	void FireTimerFinished();
@@ -80,6 +97,9 @@ protected:
 	void HandleReload();
 	void ReloadWeaponAmmo();
 
+	UPROPERTY(EditDefaultsOnly,Category="Grenade")
+	TSubclassOf<AProjectile> GrenadeClass;
+	
 private:
 	//为了告诉动画人物是否装备了武器
 	UPROPERTY(ReplicatedUsing=OnRep_EquippedWeapon)
@@ -125,6 +145,8 @@ private:
 	FTimerHandle FireTimer;
 	bool bCanFire = true;
 
+	bool bContinueFire = false;
+	
 	UPROPERTY(ReplicatedUsing=OnRep_CarriedAmmo)
 	int32 CarriedAmmo = 0;
 
@@ -135,9 +157,27 @@ private:
 
 	UPROPERTY(EditDefaultsOnly,Category="Ammo")
 	int32 StartingARAmmo = 30;
+	UPROPERTY(EditDefaultsOnly,Category="Ammo")
+	int32 StartingRocket = 1;
+	UPROPERTY(EditDefaultsOnly,Category="Ammo")
+	int32 StartingPistolAmmo = 14;
+	UPROPERTY(EditDefaultsOnly,Category="Ammo")
+	int32 StartingSmgAmmo = 50;
+	UPROPERTY(EditDefaultsOnly,Category="Ammo")
+	int32 StartingShotGunAmmo = 12;
+	UPROPERTY(EditDefaultsOnly,Category="Ammo")
+	int32 StartingSniperAmmo = 12;
+	UPROPERTY(EditDefaultsOnly,Category="Ammo")
+	int32 StartingGrenadeAmmo = 12;
 	
 	void InitCarriedAmmo();
-
+	UPROPERTY(EditDefaultsOnly,Category="Ammo")
+	int32 StartingGrenade = 3;
+	UPROPERTY(ReplicatedUsing=OnRep_CurrentGrenade)
+	int32 CurrentGrenade;
+	UFUNCTION()
+	void OnRep_CurrentGrenade();
+	
 	UPROPERTY(ReplicatedUsing=OnRep_CombatState)
 	ECombatState CombatState = ECombatState::Ecs_Unoccupied;
 	

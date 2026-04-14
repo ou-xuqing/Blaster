@@ -113,7 +113,7 @@ void ABlasterHUD::InitAnnouncementWidget()
 
 void ABlasterHUD::HideAnnouncementWidget()
 {
-	if (AnnouncementWidget && IsValid(AnnouncementWidget))
+	if (IsValid(AnnouncementWidget))
 	{
 		AnnouncementWidget->SetVisibility(ESlateVisibility::Hidden);
 	}

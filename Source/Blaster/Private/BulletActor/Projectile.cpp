@@ -6,7 +6,6 @@
 #include "Blaster/Blaster.h"
 #include "Character/BlasterCharacter.h"
 #include "Components/BoxComponent.h"
-#include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundCue.h"
 
@@ -24,16 +23,11 @@ AProjectile::AProjectile()
 	CollisionBox->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);
 	CollisionBox->SetCollisionResponseToChannel(ECC_SkeletalMesh,ECR_Block);
 	SetRootComponent(CollisionBox);
-	
-	ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>("ProjectileMovementComponent");
-	//设置速度和重力后下坠
-	ProjectileMovementComponent->bRotationFollowsVelocity = true;
+
 }
 
-// Called when the game starts or when spawned
-void AProjectile::BeginPlay()
+void AProjectile::SpawnTracerEffect()
 {
-	Super::BeginPlay();
 	if (Tracer)
 	{
 		//在Actor上生成粒子特效，使用该函数可以让特效和component绑定
@@ -45,13 +39,52 @@ void AProjectile::BeginPlay()
 			GetActorRotation(),
 			FVector(1),
 			EAttachLocation::KeepWorldPosition
+		);
+	}
+}
+
+void AProjectile::SpawnWhipSound()
+{
+	if (WhipSound)
+	{
+		AudioComponent = UGameplayStatics::SpawnSoundAttached(WhipSound,GetRootComponent(),FName(),
+			GetActorLocation(),GetActorRotation(),EAttachLocation::KeepWorldPosition,
+			true,
+			1.f,
+			1.f,
+			0.f,
+			nullptr,
+			nullptr,
+			false
 			);
 	}
+}
+
+// Called when the game starts or when spawned
+void AProjectile::BeginPlay()
+{
+	Super::BeginPlay();
+	if (GetOwner())
+	{
+		CollisionBox->IgnoreActorWhenMoving(GetOwner(),true);
+	}
+	SpawnTracerEffect();
 	//撞击不在客户端中计算
 	if (HasAuthority())
 	{
 		CollisionBox->OnComponentHit.AddDynamic(this,&ThisClass::OnHit);
 	}
+}
+
+void AProjectile::StartDestroyTimer()
+{
+	GetWorldTimerManager().SetTimer(DestroyTimerHandle,this,
+		&AProjectile::DestroyTimerFinished,DestroyDelay);
+}
+
+void AProjectile::DestroyTimerFinished()
+{
+	Destroy();
 }
 
 void AProjectile::Tick(float DeltaTime)

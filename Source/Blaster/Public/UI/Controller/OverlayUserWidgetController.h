@@ -12,6 +12,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDefeatsChangedSignatrue,int32,Def
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAmmoChangedSignatrue,int32,Ammo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCarriedAmmoChangedSignatrue,int32,CarriedAmmo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameTimeChangedSignatrue,float,InTime);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGrenadeChangedSignatrue,int32,GrenadeAmount);
 /**
  * 
  */
@@ -36,6 +37,10 @@ public:
 	UPROPERTY(BlueprintAssignable,Category="Ammo")
 	FOnCarriedAmmoChangedSignatrue OnCarriedAmmoChangedDelegate;
 	FDelegateHandle OnCarriedAmmoChangedDelegateHandle;
+	UPROPERTY(BlueprintAssignable,Category="Ammo")
+	FOnGrenadeChangedSignatrue OnGrenadeChangedDelegate;
+	FDelegateHandle OnGrenadeChangedDelegateHandle;
+	
 	//PlayerState
 	UPROPERTY(BlueprintAssignable,Category="PlayerState")
 	FOnDefeatsChangedSignatrue OnDefeatsChangedDelegate;

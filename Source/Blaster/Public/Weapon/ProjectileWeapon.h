@@ -15,12 +15,10 @@ class BLASTER_API AProjectileWeapon : public AWeapon
 {
 	GENERATED_BODY()
 public:
+	void SpawnProjectile(const FVector& FireLocation,const FRotator& FireDirection);
+	virtual void WeaponFire(const FVector& HitTarget,bool bIsContinueFire) override;
 	
-	virtual void WeaponFire(const FVector& HitTarget) override;
-
-private:
-	
-	UPROPERTY(EditAnywhere,Category="Projectile")
+protected:
+	UPROPERTY(EditAnywhere,Category="WeaponData | Projectile")
 	TSubclassOf<AProjectile> ProjectileClass;
-
 };
