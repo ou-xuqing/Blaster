@@ -32,6 +32,7 @@ public:
 	void PlayWeaponEquipSound();
 	void AttachActorToRightHand(AActor* InAttachActor);
 	void AttachActorToLeftHand(AActor* InAttachActor);
+	void AttachActorToBack(AActor* InAttachActor);
 	void EquipWeapon(AWeapon* InWeapon);
 	void Fire();
 
@@ -44,6 +45,7 @@ public:
 	void InterpFOV(float DeltaTime);
 
 	void DropWeapon();
+	void ResetCharacterState();
 	UFUNCTION(Server,Reliable)
 	void ServerDropWeapon();
 
@@ -62,6 +64,12 @@ public:
 	void LaunchGrenade();
 	UFUNCTION(Server,Reliable)
 	void ServerLaunchGrenade(const FVector_NetQuantize& Target);
+
+	void PickupAmmo(EWeaponType WeaponType , int32 AmmoAmount);
+
+	int32 GetCarriedAmmo() const { return EquippedWeapon ? CarriedAmmo : 0;}
+
+	void SwapWeapon();
 protected:
 	virtual void BeginPlay() override;
 
@@ -99,11 +107,17 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly,Category="Grenade")
 	TSubclassOf<AProjectile> GrenadeClass;
+
+	void EquipFirstWeapon(AWeapon* InWeapon);
+	void EquipSecondaryWeapon(AWeapon* InWeapon);
 	
 private:
 	//为了告诉动画人物是否装备了武器
 	UPROPERTY(ReplicatedUsing=OnRep_EquippedWeapon)
 	TObjectPtr<AWeapon> EquippedWeapon;
+
+	UPROPERTY(ReplicatedUsing=OnRep_SecondaryWeapon)
+	TObjectPtr<AWeapon> SecondaryWeapon;
 
 	UPROPERTY()
 	TObjectPtr<ABlasterCharacter> BlasterCharacter;
@@ -119,7 +133,9 @@ private:
 	
 	UFUNCTION()
 	void OnRep_EquippedWeapon();
-
+	UFUNCTION()
+	void OnRep_SecondaryWeapon();
+	
 	UPROPERTY(EditAnywhere)
 	bool bShootButtonPressed;
 	
@@ -154,7 +170,7 @@ private:
 	void OnRep_CarriedAmmo();
 	//不同类型武器携带不同弹药
 	TMap<EWeaponType,int32> CarriedAmmoMap;
-
+	TMap<EWeaponType,int32> MaxCarriedAmmoMap;
 	UPROPERTY(EditDefaultsOnly,Category="Ammo")
 	int32 StartingARAmmo = 30;
 	UPROPERTY(EditDefaultsOnly,Category="Ammo")

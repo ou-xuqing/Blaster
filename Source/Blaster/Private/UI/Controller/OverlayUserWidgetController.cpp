@@ -6,14 +6,19 @@
 #include "Character/BlasterCharacter.h"
 #include "Player/BlasterPlayerController.h"
 #include "Player/BlasterPlayerState.h"
+#include "Weapon/Weapon.h"
 
 void UOverlayUserWidgetController::BroadcastInitialValues()
 {
 	if (BlasterCharacter)
 	{
-		BlasterCharacter->OnHealthChanged.Broadcast(GetMaxHealth());
-		BlasterCharacter->OnAmmoChanged.Broadcast(0);
-		BlasterCharacter->OnCarriedAmmoChanged.Broadcast(0);
+		BlasterCharacter->OnAttributeChanged.Broadcast(GetMaxHealth(),EAttributeType::Eat_Health);
+		BlasterCharacter->OnAttributeChanged.Broadcast(GetMaxShield(),EAttributeType::Eat_Shield);
+		if (BlasterCharacter->GetCombatComponent() && BlasterCharacter->IsEquippedWeapon())
+		{
+			BlasterCharacter->OnAmmoChanged.Broadcast(BlasterCharacter->GetCombatComponent()->GetEquippedWeapon()->GetAmmo());
+			BlasterCharacter->OnCarriedAmmoChanged.Broadcast(BlasterCharacter->GetCombatComponent()->GetCarriedAmmo());
+		}
 		BlasterCharacter->OnGrenadeAmountChanged.Broadcast(BlasterCharacter->GetCurrentGrenadeAmount());
 	}
 	if (BlasterPlayerState)
@@ -28,9 +33,9 @@ void UOverlayUserWidgetController::BindCallbacksToDependencies()
 {
 	if (BlasterCharacter)
 	{
-		if (OnHealthChangedDelegateHandle.IsValid())
+		if (OnAttributeChangedDelegateHandle.IsValid())
 		{
-			BlasterCharacter->OnHealthChanged.Remove(OnHealthChangedDelegateHandle);
+			BlasterCharacter->OnAttributeChanged.Remove(OnAttributeChangedDelegateHandle);
 		}
 		if (OnAmmoChangedDelegateHandle.IsValid())
 		{
@@ -44,9 +49,9 @@ void UOverlayUserWidgetController::BindCallbacksToDependencies()
 		{
 			BlasterCharacter->OnGrenadeAmountChanged.Remove(OnGrenadeChangedDelegateHandle);
 		}
-		OnHealthChangedDelegateHandle = BlasterCharacter->OnHealthChanged.AddLambda([this](float NewHealth)
+		OnAttributeChangedDelegateHandle = BlasterCharacter->OnAttributeChanged.AddLambda([this](float NewHealth,EAttributeType Type)
 		{
-			OnHealthChangedDelegate.Broadcast(NewHealth);
+			OnAttributeChangedDelegate.Broadcast(NewHealth,Type);
 		});
 		OnAmmoChangedDelegateHandle = BlasterCharacter->OnAmmoChanged.AddLambda([this](int32 NewAmmo)
 		{
@@ -101,4 +106,10 @@ float UOverlayUserWidgetController::GetMaxHealth() const
 {
 	checkf(BlasterCharacter,TEXT("WidgetController Character Is NULL"));
 	return BlasterCharacter->GetMaxHealth();
+}
+
+float UOverlayUserWidgetController::GetMaxShield() const
+{
+	checkf(BlasterCharacter,TEXT("WidgetController Character Is NULL"));
+	return BlasterCharacter->GetMaxShield();
 }

@@ -45,10 +45,15 @@ void AGrenade::ApplyRadiusDamage()
 	{
 		if (AController* FiringController = FiringPawn->GetController())
 		{
+			float CurDamage = Damage;
+			if (DamageSpec.IsValid())
+			{
+				CurDamage = DamageSpec.BaseDamage;
+			}
 			UGameplayStatics::ApplyRadialDamageWithFalloff(
 		this,
-		Damage,
-		Damage * MinDamageMagnitude,
+		CurDamage,
+		CurDamage * MinDamageMagnitude,
 		GetActorLocation(),
 		DamageInnerRadius,
 		DamageOuterRadius,

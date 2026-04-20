@@ -112,3 +112,12 @@ void AProjectile::Destroyed()
 		UGameplayStatics::PlaySoundAtLocation(GetWorld(),ImpactSound,GetActorLocation());
 	}
 }
+
+FDamageSpec AProjectile::GetDamageSpec()
+{
+	if (DamageSpec.IsValid())
+	{
+		return DamageSpec;
+	}
+	return FDamageSpec();
+}

@@ -10,18 +10,6 @@
 #include "BlasterComponents/CombateState.h"
 #include "BlasterCharacter.generated.h"
 
-class UTimelineComponent;
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnAttributeChanged, float);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnAmmoChanged,int32);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnCarriedAmmoChanged,int32);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnGrenadeAmountChanged,int32);
-
-
-class UCameraComponent;
-class UCombatComponent;
-class AWeapon;
-class UWidgetComponent;
-
 //枚举当前状态，是否需要转向（鼠标向左或右移动过大）
 UENUM(BlueprintType)
 enum class ETurningInPlace : uint8
@@ -30,6 +18,27 @@ enum class ETurningInPlace : uint8
 	TurningRight,
 	NotTurning
 };
+
+UENUM(BlueprintType)
+enum class EAttributeType : uint8
+{
+	Eat_Health,
+	Eat_Shield
+};
+
+class UBuffComponent;
+class AAmmoPickupActor;
+class UTimelineComponent;
+
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnAttributeChanged, float ,EAttributeType);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnAmmoChanged,int32);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnCarriedAmmoChanged,int32);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnGrenadeAmountChanged,int32);
+
+class UCameraComponent;
+class UCombatComponent;
+class AWeapon;
+class UWidgetComponent;
 
 UCLASS()
 class BLASTER_API ABlasterCharacter : public ACharacter, public IPlayerInterface
@@ -56,6 +65,8 @@ public:
 	//玩家控制
 	void SetOverlappingWeapon(AWeapon* InWeapon);
 
+	void SetOverlappingAmmo(AAmmoPickupActor* InAmmoPickupActor);
+	
 	void EquippedButtonPressed();
 
 	UFUNCTION(Server, Reliable)
@@ -77,6 +88,11 @@ public:
 
 	void ThrowButtonPressed() const;
 
+	void SwapButtonPressed();
+	
+	UFUNCTION(Server, Reliable)
+	void ServerSwapButtonPressed();
+
 	virtual void Jump() override;
 
 	void DropWeapon() const;
@@ -97,9 +113,9 @@ public:
 	
 	void PlayShootingMontage(bool bInAiming);
 
-	//属性相关委托
-	FOnAttributeChanged OnHealthChanged;
-
+	//属性相关委托(其实可以设置一个type来广播血量和护盾)
+	FOnAttributeChanged OnAttributeChanged;
+	
 	void Elim();
 	
 	UFUNCTION(NetMulticast,Reliable)
@@ -120,9 +136,13 @@ public:
 
 	void StopAllAnimMontage();
 
+	void StopReloadMontage();
+
 	UFUNCTION(BlueprintImplementableEvent)
 	void ShowSniperScope(bool bShow);
-	
+
+	void SpawnDefaultWeapon();
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -160,16 +180,27 @@ private:
 
 	UPROPERTY(VisibleAnywhere,BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCombatComponent> CombatComponent;
-
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<UBuffComponent> BuffComponent;
+	
 	UPROPERTY(ReplicatedUsing = OnRep_OverlappingWeapon)
 	TObjectPtr<AWeapon> OverlappingWeapon;
 
+	UPROPERTY(ReplicatedUsing = OnRep_OverlappingAmmoPickup)
+	TObjectPtr<AAmmoPickupActor> OverlappingAmmoPickup;
+	
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UStaticMeshComponent> GrenadeComponent;
+
+	UPROPERTY(EditDefaultsOnly)
+	TSubclassOf<AWeapon> DefaultWeapon;
 
 	UFUNCTION()
 	void OnRep_OverlappingWeapon(AWeapon* LastWeapon);
 
+	UFUNCTION()
+	void OnRep_OverlappingAmmoPickup(AAmmoPickupActor* LastAmmo);
+	
 	//用来让枪跟着鼠标，配合AimOffset
 	float AO_Yaw = 0.f;
 	float AO_Pitch = 0.f;
@@ -203,12 +234,19 @@ private:
 	//生命值
 	UPROPERTY(EditDefaultsOnly,Category="PlayerState")
 	float MaxHealth = 100.f;
-
 	UPROPERTY(ReplicatedUsing=OnRep_Health)
 	float Health = 100.f;
-	
 	UFUNCTION()
-	void OnRep_Health();
+	void OnRep_Health(float LastHealth);
+
+	//护盾
+	UPROPERTY(EditDefaultsOnly,Category="PlayerState")
+	float MaxShield = 100.f;
+	UPROPERTY(ReplicatedUsing=OnRep_Shield)
+	float Shield = 100.f;
+	UFUNCTION()
+	void OnRep_Shield();
+	
 	//死亡
 	bool bIsElim = false;
 
@@ -234,6 +272,10 @@ private:
 	
 public:
 	UCameraComponent* GetCamera() const { return FollowCamera; }
+
+	UCombatComponent* GetCombatComponent() const { return CombatComponent;}
+
+	UBuffComponent* GetBuffComponent() const { return BuffComponent;}
 	
 	float GetAO_Yaw() const { return AO_Yaw; }
 	float GetAO_Pitch() const { return AO_Pitch; }
@@ -244,7 +286,13 @@ public:
 	FVector GetAimTarget() const;
 
 	float GetMaxHealth() const { return MaxHealth;}
+	float GetHealth() const {return Health;}
+	void SetHealth(float InHealth) { Health = FMath::Clamp(InHealth,0.f,MaxHealth); OnAttributeChanged.Broadcast(Health,EAttributeType::Eat_Health);}
 
+	float GetMaxShield() const { return MaxShield; }
+	float GetShield() const {return Shield;}
+	void SetShield(float InShield) { Shield = FMath::Clamp(InShield,0.f,MaxShield); OnAttributeChanged.Broadcast(Shield,EAttributeType::Eat_Shield);}
+	
 	bool GetIsElim() const {return bIsElim;}
 
 	ECombatState GetCombatState() const {return CombatComponent ? CombatComponent->CombatState : ECombatState::Ecs_Max;}
@@ -253,4 +301,6 @@ public:
 
 	int32 GetStartingGrenadeAmount() const {return CombatComponent ? CombatComponent->StartingGrenade : 0;}
 	int32 GetCurrentGrenadeAmount() const {return CombatComponent ? CombatComponent->CurrentGrenade : 0;}
+
+
 };

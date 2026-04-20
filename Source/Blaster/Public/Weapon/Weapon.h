@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "WeaponTypes.h"
+#include "Sound/SoundCue.h"
 #include "GameFramework/Actor.h"
 #include "Weapon.generated.h"
 

@@ -105,6 +105,9 @@ private:
 	TObjectPtr<UInputAction> ReloadAction;
 	UPROPERTY(EditDefaultsOnly,Category="Input")
 	TObjectPtr<UInputAction> ThrowGrenadeAction;
+	UPROPERTY(EditDefaultsOnly,Category="Input")
+	TObjectPtr<UInputAction> SwapAction;
+
 	
 	void Move(const FInputActionValue& InputActionValue);
 	void JumpMove(const FInputActionValue& InputActionValue);
@@ -118,4 +121,5 @@ private:
 	void DropWeapon(const FInputActionValue& InputActionValue);
 	void Reload(const FInputActionValue& InputActionValue);
 	void ThrowGrenade(const FInputActionValue& InputActionValue);
+	void SwapWeapon(const FInputActionValue& InputActionValue);
 };

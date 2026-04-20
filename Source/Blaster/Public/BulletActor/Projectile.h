@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Interface/DamageCauserInterface.h"
 #include "Projectile.generated.h"
 
 class UProjectileMovementComponent;
@@ -13,7 +14,7 @@ class USoundCue;
  * 在服务器中产生子弹，复制到客户端
  */
 UCLASS()
-class BLASTER_API AProjectile : public AActor
+class BLASTER_API AProjectile : public AActor,public IDamageCauserInterface
 {
 	GENERATED_BODY()
 	
@@ -24,6 +25,8 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	virtual void Destroyed() override;
+
+	virtual FDamageSpec GetDamageSpec() override;
 	
 	UFUNCTION()
 	virtual void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse,const FHitResult& Hit);
@@ -49,6 +52,9 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly)
 	TObjectPtr<UAudioComponent> AudioComponent;
+	
+	UPROPERTY(EditDefaultsOnly,Category="BulletData | DamageSpec")
+	FDamageSpec DamageSpec;
 private:
 	UPROPERTY(EditAnywhere,Category="BulletData | DParticle")
 	TObjectPtr<UParticleSystem> Tracer;
@@ -63,4 +69,5 @@ private:
 	FTimerHandle DestroyTimerHandle;
 	UPROPERTY(EditDefaultsOnly,Category="BulletData | DelayDestroy")
 	float DestroyDelay = 3.f;
+
 };

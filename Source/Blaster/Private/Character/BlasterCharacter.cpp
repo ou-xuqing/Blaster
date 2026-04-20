@@ -4,6 +4,7 @@
 #include "Character/BlasterCharacter.h"
 
 #include "Blaster/Blaster.h"
+#include "BlasterComponents/BuffComponent.h"
 #include "BlasterComponents/CombatComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -11,8 +12,11 @@
 #include "Game/BlasterGameMode.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Interface/DamageCauserInterface.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
+#include "Pickup/AmmoPickupActor.h"
 #include "Player/BlasterPlayerController.h"
 #include "Player/BlasterPlayerState.h"
 #include "Weapon/Weapon.h"
@@ -50,6 +54,9 @@ ABlasterCharacter::ABlasterCharacter()
 	//设置组件为复制，组件不需要和变量一样在Lifetime中注册，也不需要UPROPERTY声明。
 	CombatComponent->SetIsReplicated(true);
 
+	BuffComponent = CreateDefaultSubobject<UBuffComponent>("BuffComponent");
+	BuffComponent->SetIsReplicated(true);
+	
 	DissolveTimelineComponent = CreateDefaultSubobject<UTimelineComponent>("DissolveTimelineComponent");
 
 	//打开下蹲功能
@@ -64,6 +71,17 @@ ABlasterCharacter::ABlasterCharacter()
 	GrenadeComponent = CreateDefaultSubobject<UStaticMeshComponent>("GrenadeComponent");
 	GrenadeComponent->SetupAttachment(GetMesh(),FName("GrenadeSocket"));
 	GrenadeComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+}
+
+void ABlasterCharacter::SpawnDefaultWeapon()
+{
+	UWorld* World = GetWorld();
+	ABlasterGameMode* BlasterGameMode = Cast<ABlasterGameMode>(UGameplayStatics::GetGameMode(this));
+	if ( BlasterGameMode && World && CombatComponent && DefaultWeapon)
+	{
+		AWeapon* Weapon = World->SpawnActor<AWeapon>(DefaultWeapon);
+		CombatComponent->EquipWeapon(Weapon);
+	}
 }
 
 void ABlasterCharacter::BeginPlay()
@@ -120,7 +138,9 @@ void ABlasterCharacter::GetLifetimeReplicatedProps(TArray<class FLifetimePropert
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	//只对拥有该Pawn的客户端复制
 	DOREPLIFETIME_CONDITION(ABlasterCharacter, OverlappingWeapon, COND_OwnerOnly);
-	DOREPLIFETIME(ABlasterCharacter,Health)
+	DOREPLIFETIME(ABlasterCharacter,Health);
+	DOREPLIFETIME(ABlasterCharacter,Shield);
+	DOREPLIFETIME_CONDITION(ABlasterCharacter,OverlappingAmmoPickup,COND_OwnerOnly);
 }
 
 void ABlasterCharacter::PostInitializeComponents()
@@ -129,6 +149,10 @@ void ABlasterCharacter::PostInitializeComponents()
 	if (CombatComponent)
 	{
 		CombatComponent->BlasterCharacter = this;
+	}
+	if (BuffComponent)
+	{
+		BuffComponent->BlasterCharacter = this;
 	}
 }
 
@@ -312,6 +336,25 @@ void ABlasterCharacter::SetOverlappingWeapon(AWeapon* InWeapon)
 	}
 }
 
+void ABlasterCharacter::SetOverlappingAmmo(AAmmoPickupActor* InAmmoPickupActor)
+{
+	if (IsLocallyControlled())
+	{
+		if (OverlappingAmmoPickup)
+		{
+			OverlappingAmmoPickup->ShowPickupText(false);
+		}
+	}
+	OverlappingAmmoPickup = InAmmoPickupActor;
+	if (IsLocallyControlled())
+	{
+		if (OverlappingAmmoPickup)
+		{
+			OverlappingAmmoPickup->ShowPickupText(true);
+		}
+	}
+}
+
 void ABlasterCharacter::SetTurningInPlace(float DeltaTime)
 {
 	//[-90.f,90.f]
@@ -461,6 +504,12 @@ void ABlasterCharacter::EquippedButtonPressed()
 		if (HasAuthority())
 		{
 			CombatComponent->EquipWeapon(OverlappingWeapon);
+			if (OverlappingAmmoPickup)
+			{
+				CombatComponent->PickupAmmo(OverlappingAmmoPickup->GetAmmoType(),OverlappingAmmoPickup->GetAmmoAmount());
+				OverlappingAmmoPickup->Destroy();
+				OverlappingAmmoPickup = nullptr;
+			}
 		}
 		else
 		{
@@ -475,6 +524,12 @@ void ABlasterCharacter::ServerEquippedButtonPressed_Implementation()
 	{
 		if (CombatComponent->CombatState == ECombatState::Ecs_ThrowGrenade) return;
 		CombatComponent->EquipWeapon(OverlappingWeapon);
+		if (OverlappingAmmoPickup)
+		{
+			CombatComponent->PickupAmmo(OverlappingAmmoPickup->GetAmmoType(),OverlappingAmmoPickup->GetAmmoAmount());
+			OverlappingAmmoPickup->Destroy();
+			OverlappingAmmoPickup = nullptr;
+		}
 	}
 }
 
@@ -488,6 +543,18 @@ void ABlasterCharacter::OnRep_OverlappingWeapon(AWeapon* LastWeapon)
 	if (OverlappingWeapon)
 	{
 		OverlappingWeapon->ShowPickupText(true);
+	}
+}
+
+void ABlasterCharacter::OnRep_OverlappingAmmoPickup(AAmmoPickupActor* LastAmmo)
+{
+	if (LastAmmo)
+	{
+		LastAmmo->ShowPickupText(false);
+	}
+	if (OverlappingAmmoPickup)
+	{
+		OverlappingAmmoPickup->ShowPickupText(true);
 	}
 }
 
@@ -584,6 +651,28 @@ void ABlasterCharacter::ThrowButtonPressed() const
 	}
 }
 
+void ABlasterCharacter::SwapButtonPressed()
+{
+	if (CombatComponent)
+	{
+		if (CombatComponent->CombatState == ECombatState::Ecs_ThrowGrenade) return;
+		if (CombatComponent->EquippedWeapon == nullptr && CombatComponent->SecondaryWeapon == nullptr) return;
+		//本地先打断
+		StopReloadMontage();
+		ServerSwapButtonPressed();
+	}
+}
+
+void ABlasterCharacter::ServerSwapButtonPressed_Implementation()
+{
+	if (CombatComponent)
+	{
+		if (CombatComponent->CombatState == ECombatState::Ecs_ThrowGrenade) return;
+		if (CombatComponent->EquippedWeapon == nullptr && CombatComponent->SecondaryWeapon == nullptr) return;
+		CombatComponent->SwapWeapon();
+	}
+}
+
 bool ABlasterCharacter::IsEquippedWeapon() const
 {
 	return (CombatComponent && CombatComponent->EquippedWeapon);
@@ -610,10 +699,18 @@ FVector ABlasterCharacter::GetAimTarget() const
 }
 
 
-void ABlasterCharacter::OnRep_Health()
+void ABlasterCharacter::OnRep_Health(float LastHealth)
 {
-	PlayHitReactMontage();
-	OnHealthChanged.Broadcast(Health);
+	if (Health < LastHealth)
+	{
+		PlayHitReactMontage();
+	}
+	OnAttributeChanged.Broadcast(Health,EAttributeType::Eat_Health);
+}
+
+void ABlasterCharacter::OnRep_Shield()
+{
+	OnAttributeChanged.Broadcast(Shield,EAttributeType::Eat_Shield);
 }
 
 void ABlasterCharacter::UpdateDissolveMaterial(float DissolveValue)
@@ -635,21 +732,48 @@ void ABlasterCharacter::StartDissolve()
 }
 
 //在服务器中执行，因为只在服务器中绑定
-void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType,
-	class AController* InstigatedBy, AActor* DamageCauser)
+void ABlasterCharacter::ReceiveDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType,
+AController* InstigatedBy, AActor* DamageCauser)
 {
 	ABlasterPlayerController* BlasterPlayerController = Cast<ABlasterPlayerController>(GetController());
 	if (BlasterPlayerController == nullptr) return;
 	if (BlasterPlayerController->GetMatchState() != "InProgress") return;
-	Health = FMath::Clamp(Health-Damage,0.f,MaxHealth);
+	IDamageCauserInterface* DamageCauserInterface = Cast<IDamageCauserInterface>(DamageCauser);
+	if (DamageCauserInterface && DamageCauserInterface->GetDamageSpec().IsValid())
+	{
+		FDamageSpec DamageSpec = DamageCauserInterface->GetDamageSpec();
+
+		float ShieldDamage = Damage * DamageSpec.ShieldMultiplier;
+		float DamageReduction = Shield / (MaxShield + 15.f);
+		float HealthDamage = Damage * DamageSpec.FleshMultiplier;
+		float EffectiveReduction = DamageReduction * (1.f - DamageSpec.ArmorPenetration);
+		HealthDamage = HealthDamage * (1.f - EffectiveReduction);
+		
+		Shield = FMath::Clamp(Shield - ShieldDamage,0.f,MaxShield);
+		Health = FMath::Clamp(Health - HealthDamage,0.f,MaxHealth);
+	}
+	else
+	{
+		float CauseDamage = Damage;
+		float CauseHealth = Damage - Shield;
+		if (Shield > 0.f)
+		{
+			Shield = FMath::Clamp(Shield - CauseDamage,0.f,MaxShield);
+		}
+		if (CauseHealth > 0.f)
+		{
+			Health = FMath::Clamp(Health - CauseDamage,0.f,MaxHealth);
+		}
+	}
 	
 	//RPC的开销比复制要大，所以不用多播RPC而是在服务器和复制函数中调用执行montage
 	PlayHitReactMontage();
 	if (CombatComponent) CombatComponent->CombatState = ECombatState::Ecs_Unoccupied;
-	OnHealthChanged.Broadcast(Health);
-
+	OnAttributeChanged.Broadcast(Health,EAttributeType::Eat_Health);
+	OnAttributeChanged.Broadcast(Shield,EAttributeType::Eat_Shield);
+	int32 CureHealth = Health;
 	//生命值为0时淘汰
-	if (Health == 0.f)
+	if (CureHealth == 0)
 	{
 		if (ABlasterGameMode* BlasterGameMode = Cast<ABlasterGameMode>(GetWorld()->GetAuthGameMode()))
 		{
@@ -670,12 +794,19 @@ void ABlasterCharacter::ElimTimerFinished()
 
 void ABlasterCharacter::Elim()
 {
-	if (CombatComponent && CombatComponent->EquippedWeapon)
+	if (CombatComponent)
 	{
-		
-		//死亡时丢弃武器，后面设为nullptr只是保障
-		CombatComponent->EquippedWeapon->DropWeapon(FVector(0.f,0.f,0.f));
-		CombatComponent->EquippedWeapon = nullptr;
+		if (CombatComponent->EquippedWeapon)
+		{
+			//死亡时丢弃武器，后面设为nullptr只是保障
+			CombatComponent->EquippedWeapon->DropWeapon(FVector(0.f,0.f,0.f));
+			CombatComponent->EquippedWeapon = nullptr;
+		}
+		if (CombatComponent->SecondaryWeapon)
+		{
+			CombatComponent->SecondaryWeapon->DropWeapon(FVector(0.f,0.f,0.f));
+			CombatComponent->SecondaryWeapon = nullptr;
+		}
 	}
 	MulticastElim();
 	GetWorldTimerManager().SetTimer(
@@ -713,5 +844,20 @@ void ABlasterCharacter::MulticastElim_Implementation()
 
 void ABlasterCharacter::StopAllAnimMontage()
 {
-	GetMesh()->GetAnimInstance()->StopAllMontages(0.1f);
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		AnimInstance->StopAllMontages(0.1f);
+	}
+	
+}
+
+void ABlasterCharacter::StopReloadMontage()
+{
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		if (ReloadMontage && AnimInstance->Montage_IsPlaying(ReloadMontage))
+		{
+			AnimInstance->Montage_Stop(0.1f, ReloadMontage);
+		}
+	}
 }

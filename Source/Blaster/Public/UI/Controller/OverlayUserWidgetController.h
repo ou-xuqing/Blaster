@@ -6,7 +6,7 @@
 #include "UI/Controller/BlasterUserWidgetController.h"
 #include "OverlayUserWidgetController.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHealthChangedSignatrue,float,Health);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAttributeChangedSignatrue,float,Attribute, EAttributeType,AttributeType);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnScoreChangedSignatrue,float,Score);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDefeatsChangedSignatrue,int32,Defeat);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAmmoChangedSignatrue,int32,Ammo);
@@ -27,10 +27,12 @@ public:
 
 	UFUNCTION(BlueprintCallable,Category="PlayerState")
 	float GetMaxHealth() const;
+	UFUNCTION(BlueprintCallable,Category="PlayerState")
+	float GetMaxShield() const;
 	//Character
 	UPROPERTY(BlueprintAssignable,Category="PlayerState")
-	FOnHealthChangedSignatrue OnHealthChangedDelegate;
-	FDelegateHandle OnHealthChangedDelegateHandle;
+	FOnAttributeChangedSignatrue OnAttributeChangedDelegate;
+	FDelegateHandle OnAttributeChangedDelegateHandle;
 	UPROPERTY(BlueprintAssignable,Category="Ammo")
 	FOnAmmoChangedSignatrue OnAmmoChangedDelegate;
 	FDelegateHandle OnAmmoChangedDelegateHandle;

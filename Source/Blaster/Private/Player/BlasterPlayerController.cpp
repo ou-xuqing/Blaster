@@ -108,6 +108,11 @@ void ABlasterPlayerController::SetupInputComponent()
 		{
 			EnhancedInputComponent->BindAction(ThrowGrenadeAction,ETriggerEvent::Started,this,&ABlasterPlayerController::ThrowGrenade);
 		}
+
+		if (SwapAction)
+		{
+			EnhancedInputComponent->BindAction(SwapAction,ETriggerEvent::Started,this,&ABlasterPlayerController::SwapWeapon);
+		}
 	}
 
 }
@@ -274,6 +279,18 @@ void ABlasterPlayerController::ThrowGrenade(const FInputActionValue& InputAction
 		if (BlasterCharacter)
 		{
 			BlasterCharacter->ThrowButtonPressed();
+		}
+	}
+}
+
+void ABlasterPlayerController::SwapWeapon(const FInputActionValue& InputActionValue)
+{
+	if (APawn* ControlPawn = GetPawn())
+	{
+		ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(ControlPawn);
+		if (BlasterCharacter)
+		{
+			BlasterCharacter->SwapButtonPressed();
 		}
 	}
 }

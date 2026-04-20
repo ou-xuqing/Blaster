@@ -85,7 +85,12 @@ void AHitScanWeapon::WeaponFire(const FVector& HitTarget,bool bIsContinueFire)
 		ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(HitResult.GetActor());
 		if (HasAuthority() && BlasterCharacter && InstigatorController)
 		{
-			UGameplayStatics::ApplyDamage(BlasterCharacter,Damage,InstigatorController,this,UDamageType::StaticClass());
+			float CurDamage = Damage;
+			if (DamageSpec.IsValid())
+			{
+				CurDamage = DamageSpec.BaseDamage;
+			}
+			UGameplayStatics::ApplyDamage(BlasterCharacter,CurDamage,InstigatorController,this,UDamageType::StaticClass());
 		}
 		BeamEnd = HitResult.ImpactPoint;
 	}
@@ -101,4 +106,13 @@ void AHitScanWeapon::WeaponFire(const FVector& HitTarget,bool bIsContinueFire)
 	}
 
 	SpendRound();
+}
+
+FDamageSpec AHitScanWeapon::GetDamageSpec()
+{
+	if (DamageSpec.IsValid())
+	{
+		return DamageSpec;
+	}
+	return FDamageSpec();
 }

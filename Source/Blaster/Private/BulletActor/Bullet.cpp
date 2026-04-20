@@ -34,7 +34,12 @@ void ABullet::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrim
 	{
 		if (AController* PlayerController = OwnCharacter->GetController())
 		{
-			UGameplayStatics::ApplyDamage(OtherActor,Damage,PlayerController,this,UDamageType::StaticClass());
+			float CurDamage = Damage;
+			if (DamageSpec.IsValid())
+			{
+				CurDamage = DamageSpec.BaseDamage;
+			}
+			UGameplayStatics::ApplyDamage(OtherActor,CurDamage,PlayerController,this,UDamageType::StaticClass());
 		}
 	}
 	if (WhipSound && AudioComponent)
