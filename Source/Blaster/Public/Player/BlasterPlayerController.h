@@ -9,6 +9,8 @@
 
 class ABlasterGameState;
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnGameTimeChanged, float);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSetPing,float Ping);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHighPing,bool,bIsHighping);
 
 struct FInputActionValue;
 class UInputMappingContext;
@@ -26,17 +28,32 @@ public:
 	virtual void BeginPlay() override;
 	virtual void PlayerTick(float DeltaTime) override;
 	virtual void SetupInputComponent() override;
-	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void ReceivedPlayer() override;
 	FOnGameTimeChanged OnGameTimeChanged;
 
 	void OnMatchStateSet(FName InMatchState);
 
 	FName GetMatchState() const {return MatchState;}
+	float GetHighPingThreshold() const {return HighPingThreshold;}
 
 	void TryUpdateAnnouncementText();
 
 	void BindGameStateTopScorePlayers();
+
+	void CheckCurrentPing(float DeltaTime);
+	
+	//通过服务器和客户端时间差值，在客户端中计算当前服务器时间
+	float GetServerTime();
+	UFUNCTION(Server,Reliable)
+	void ServerReportPingStatus(bool bInPing);
+	
+	FOnSetPing OnSetPing;
+
+	//ping过高取消lagcompensation
+	FOnHighPing OnHighPing;
+
+	float SingleReTurnTime = 0.f;
 protected:
 	
 	//游戏时间
@@ -56,14 +73,12 @@ protected:
 	void ServerRequestGameTime(float RequestTimeOfClient);
 	UFUNCTION(Client,Reliable)
 	void ClientReportServerTime(float ServerTimeOfReceivedClientTime,float RequestTimeOfClient);
-	//通过服务器和客户端时间差值，在客户端中计算当前服务器时间
-	float GetServerTime();
+
 
 	UFUNCTION(Server,Reliable)
 	void ServerCheckMatchState();
 	UFUNCTION(Client,Reliable)
 	void ClientJoinMidGame(FName InMatchState,float InWarmupTime,float InMatchTime,float InLevelStartTime,float InCooldownTime);
-
 
 private:
 	void HandleMatchState();
@@ -122,4 +137,12 @@ private:
 	void Reload(const FInputActionValue& InputActionValue);
 	void ThrowGrenade(const FInputActionValue& InputActionValue);
 	void SwapWeapon(const FInputActionValue& InputActionValue);
+	
+	UPROPERTY(EditDefaultsOnly,Category="HighPing")
+	float PingTimeToCheck = 1.f;
+
+	float CheckPingTime = 0.f;
+
+	UPROPERTY(EditDefaultsOnly,Category="HighPing")
+	float HighPingThreshold = 200.f;
 };

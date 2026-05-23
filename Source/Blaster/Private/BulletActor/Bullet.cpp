@@ -3,10 +3,12 @@
 
 #include "BulletActor/Bullet.h"
 
+#include "BlasterComponents/LagCompensationComponent.h"
+#include "Character/BlasterCharacter.h"
 #include "Components/AudioComponent.h"
-#include "GameFramework/Character.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Player/BlasterPlayerController.h"
 
 ABullet::ABullet()
 {
@@ -15,6 +17,9 @@ ABullet::ABullet()
 	//设置速度和重力后下坠
 	ProjectileMovementComponent->bRotationFollowsVelocity = true;
 	ProjectileMovementComponent->SetIsReplicated(true);
+
+	ProjectileMovementComponent->InitialSpeed = InitialSpeed;
+	ProjectileMovementComponent->MaxSpeed = InitialSpeed;
 }
 
 void ABullet::BeginPlay()
@@ -24,24 +29,78 @@ void ABullet::BeginPlay()
 	{
 		SpawnWhipSound();
 	}
+	/*
+	FPredictProjectilePathParams PredictParams;
+	FPredictProjectilePathResult PredictResult;
+
+	PredictParams.ActorsToIgnore.Add(this);
+	PredictParams.bTraceWithChannel = true;
+	PredictParams.bTraceWithCollision = true;
+	PredictParams.DrawDebugTime = 4.f;
+	PredictParams.DrawDebugType = EDrawDebugTrace::ForDuration;
+	PredictParams.LaunchVelocity = GetActorForwardVector() * InitialSpeed;
+	UE_LOG(LogTemp,Warning,TEXT("%f,%f,%f"),ProjectileMovementComponent->Velocity.X,ProjectileMovementComponent->Velocity.Y,ProjectileMovementComponent->Velocity.Z);
+	PredictParams.StartLocation = GetActorLocation();
+	PredictParams.ProjectileRadius = 5.f;
+	PredictParams.MaxSimTime = 1.f;
+	PredictParams.OverrideGravityZ = ProjectileMovementComponent->GetGravityZ();
+	PredictParams.SimFrequency = 30.f;
+	PredictParams.TraceChannel = ECC_Visibility;
+	
+	UGameplayStatics::PredictProjectilePath(this,PredictParams,PredictResult);*/
 }
+
+#if WITH_EDITOR
+void ABullet::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+	FName EventPropName = PropertyChangedEvent.Property != nullptr ? PropertyChangedEvent.Property->GetFName() : NAME_None;
+	if (EventPropName == GET_MEMBER_NAME_CHECKED(AProjectile,InitialSpeed))
+	{
+		ProjectileMovementComponent->InitialSpeed = InitialSpeed;
+		ProjectileMovementComponent->MaxSpeed = InitialSpeed;
+	}
+}
+#endif
 
 void ABullet::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
                     FVector NormalImpulse, const FHitResult& Hit)
 {
-	
-	if (ACharacter* OwnCharacter =Cast<ACharacter>(GetOwner()))
+	if (bCanApplyDamage)
 	{
-		if (AController* PlayerController = OwnCharacter->GetController())
+		if ( ABlasterCharacter* HitCharacter = Cast<ABlasterCharacter>(OtherActor))
 		{
-			float CurDamage = Damage;
-			if (DamageSpec.IsValid())
+			if (ABlasterCharacter* OwnCharacter = Cast<ABlasterCharacter>(GetOwner()))
 			{
-				CurDamage = DamageSpec.BaseDamage;
+				if (ABlasterPlayerController* PlayerController = Cast<ABlasterPlayerController>(OwnCharacter->GetController()) )
+				{
+					float CurDamage = Damage;
+					if (DamageSpec.IsValid())
+					{
+						CurDamage = DamageSpec.BaseDamage;
+					}
+					CurDamage *= HitCharacter->GetHitBoneDamageMultiply(Hit.BoneName);
+					if (PlayerController->HasAuthority() && bUseServerSideRewind && PlayerController->IsLocalController())
+					{
+						UGameplayStatics::ApplyDamage(OtherActor,CurDamage,PlayerController,this,UDamageType::StaticClass());
+					}
+					else if (PlayerController->HasAuthority() && !bUseServerSideRewind)
+					{
+						UGameplayStatics::ApplyDamage(OtherActor,CurDamage,PlayerController,this,UDamageType::StaticClass());
+					}
+					else if (!PlayerController->HasAuthority() && bUseServerSideRewind && PlayerController->IsLocalController())
+					{
+						if (OwnCharacter->GetLagCompensationComponent())
+						{
+							float HitTime = PlayerController->GetServerTime() - PlayerController->SingleReTurnTime;
+							OwnCharacter->GetLagCompensationComponent()->ServerProjectileScoreRequest(HitCharacter,TraceStart,InitialVelocity,HitTime,DamageCauserWeapon);
+						}
+					}
+				}
 			}
-			UGameplayStatics::ApplyDamage(OtherActor,CurDamage,PlayerController,this,UDamageType::StaticClass());
 		}
 	}
+	DrawDebugSphere(GetWorld(),GetActorLocation(),5.f,-1,FColor::Red,false,10.f);
 	if (WhipSound && AudioComponent)
 	{
 		AudioComponent->Stop();

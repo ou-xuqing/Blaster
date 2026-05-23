@@ -13,6 +13,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAmmoChangedSignatrue,int32,Ammo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCarriedAmmoChangedSignatrue,int32,CarriedAmmo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameTimeChangedSignatrue,float,InTime);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGrenadeChangedSignatrue,int32,GrenadeAmount);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSetPingSignatrue,float,Ping);
 /**
  * 
  */
@@ -29,6 +30,8 @@ public:
 	float GetMaxHealth() const;
 	UFUNCTION(BlueprintCallable,Category="PlayerState")
 	float GetMaxShield() const;
+	UFUNCTION(BlueprintCallable,Category="PlayerState")
+	float GetHighPingThreshold() const;
 	//Character
 	UPROPERTY(BlueprintAssignable,Category="PlayerState")
 	FOnAttributeChangedSignatrue OnAttributeChangedDelegate;
@@ -50,7 +53,10 @@ public:
 	UPROPERTY(BlueprintAssignable,Category="PlayerState")
 	FOnScoreChangedSignatrue OnScoreChangedDelegate;
 	FDelegateHandle OnScoreChangedDelegateHandle;
-
+	UPROPERTY(BlueprintAssignable,Category="PlayerState")
+	FOnSetPingSignatrue OnSetPingDelegate;
+	FDelegateHandle OnSetPingDelegateHandle;
+	
 	UPROPERTY(BlueprintAssignable,Category="GameMode")
 	FOnGameTimeChangedSignatrue OnGameTimeChangedDelegate;
 	FDelegateHandle OnGameTimeChangedDelegateHandle;

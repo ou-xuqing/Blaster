@@ -6,7 +6,9 @@
 #include "Blaster/Blaster.h"
 #include "BlasterComponents/BuffComponent.h"
 #include "BlasterComponents/CombatComponent.h"
+#include "BlasterComponents/LagCompensationComponent.h"
 #include "Camera/CameraComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Game/BlasterGameMode.h"
@@ -56,6 +58,8 @@ ABlasterCharacter::ABlasterCharacter()
 
 	BuffComponent = CreateDefaultSubobject<UBuffComponent>("BuffComponent");
 	BuffComponent->SetIsReplicated(true);
+
+	LagCompensationComponent = CreateDefaultSubobject<ULagCompensationComponent>("LagCompensationComponent");
 	
 	DissolveTimelineComponent = CreateDefaultSubobject<UTimelineComponent>("DissolveTimelineComponent");
 
@@ -71,6 +75,88 @@ ABlasterCharacter::ABlasterCharacter()
 	GrenadeComponent = CreateDefaultSubobject<UStaticMeshComponent>("GrenadeComponent");
 	GrenadeComponent->SetupAttachment(GetMesh(),FName("GrenadeSocket"));
 	GrenadeComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	//HitBox 给ServerReWind用
+	Head = CreateDefaultSubobject<UBoxComponent>("Head");
+	Head->SetupAttachment(GetMesh(),FName("head"));
+	BoxComponentInfo.Add(FName("Head"),Head);
+	
+	Pelvis = CreateDefaultSubobject<UBoxComponent>("Pelvis");
+	Pelvis->SetupAttachment(GetMesh(),FName("pelvis"));
+	BoxComponentInfo.Add(FName("Pelvis"),Pelvis);
+
+	Spine_02 = CreateDefaultSubobject<UBoxComponent>("Spine_02");
+	Spine_02->SetupAttachment(GetMesh(),FName("spine_02"));
+	BoxComponentInfo.Add(FName("Spine_02"),Spine_02);
+	
+	Spine_03 = CreateDefaultSubobject<UBoxComponent>("Spine_03");
+	Spine_03->SetupAttachment(GetMesh(),FName("spine_03"));
+	BoxComponentInfo.Add(FName("Spine_03"),Spine_03);
+	
+	UpperArm_R = CreateDefaultSubobject<UBoxComponent>("UpperArm_R");
+	UpperArm_R->SetupAttachment(GetMesh(),FName("upperarm_r"));
+	BoxComponentInfo.Add(FName("UpperArm_R"),UpperArm_R);
+	
+	UpperArm_L = CreateDefaultSubobject<UBoxComponent>("UpperArm_L");
+	UpperArm_L->SetupAttachment(GetMesh(),FName("UpperArm_L"));
+	BoxComponentInfo.Add(FName("UpperArm_L"),UpperArm_L);
+	
+	LowerArm_R = CreateDefaultSubobject<UBoxComponent>("LowerArm_R");
+	LowerArm_R->SetupAttachment(GetMesh(),FName("LowerArm_R"));
+	BoxComponentInfo.Add(FName("LowerArm_R"),LowerArm_R);
+	
+	LowerArm_L = CreateDefaultSubobject<UBoxComponent>("LowerArm_L");
+	LowerArm_L->SetupAttachment(GetMesh(),FName("LowerArm_L"));
+	BoxComponentInfo.Add(FName("LowerArm_L"),LowerArm_L);
+	
+	Hand_L = CreateDefaultSubobject<UBoxComponent>("Hand_L");
+	Hand_L->SetupAttachment(GetMesh(),FName("Hand_L"));
+	BoxComponentInfo.Add(FName("Hand_L"),Hand_L);
+	
+	Hand_R = CreateDefaultSubobject<UBoxComponent>("Hand_R");
+	Hand_R->SetupAttachment(GetMesh(),FName("Hand_R"));
+	BoxComponentInfo.Add(FName("Hand_R"),Hand_R);
+	
+	Backpack = CreateDefaultSubobject<UBoxComponent>("Backpack");
+	Backpack->SetupAttachment(GetMesh(),FName("Backpack"));
+	BoxComponentInfo.Add(FName("Backpack"),Backpack);
+	
+	Blanket = CreateDefaultSubobject<UBoxComponent>("Blanket");
+	Blanket->SetupAttachment(GetMesh(),FName("Backpack"));
+	BoxComponentInfo.Add(FName("Blanket"),Blanket);
+	
+	Thigh_L = CreateDefaultSubobject<UBoxComponent>("Thigh_L");
+	Thigh_L->SetupAttachment(GetMesh(),FName("Thigh_L"));
+	BoxComponentInfo.Add(FName("Thigh_L"),Thigh_L);
+	
+	Thigh_R = CreateDefaultSubobject<UBoxComponent>("Thigh_R");
+	Thigh_R->SetupAttachment(GetMesh(),FName("Thigh_R"));
+	BoxComponentInfo.Add(FName("Thigh_R"),Thigh_R);
+	
+	Calf_R = CreateDefaultSubobject<UBoxComponent>("Calf_R");
+	Calf_R->SetupAttachment(GetMesh(),FName("Calf_R"));
+	BoxComponentInfo.Add(FName("Calf_R"),Calf_R);
+	
+	Calf_L = CreateDefaultSubobject<UBoxComponent>("Calf_L");
+	Calf_L->SetupAttachment(GetMesh(),FName("Calf_L"));
+	BoxComponentInfo.Add(FName("Calf_L"),Calf_L);
+	
+	Foot_R = CreateDefaultSubobject<UBoxComponent>("Foot_R");
+	Foot_R->SetupAttachment(GetMesh(),FName("Foot_R"));
+	BoxComponentInfo.Add(FName("Foot_R"),Foot_R);
+	
+	Foot_L = CreateDefaultSubobject<UBoxComponent>("Foot_L");
+	Foot_L->SetupAttachment(GetMesh(),FName("Foot_L"));
+	BoxComponentInfo.Add(FName("Foot_L"),Foot_L);
+
+	for (auto& HitBoxComponentInfo : BoxComponentInfo)
+	{
+		HitBoxComponentInfo.Value->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		HitBoxComponentInfo.Value->SetCollisionObjectType(ECC_HitBox);
+		HitBoxComponentInfo.Value->SetCollisionResponseToAllChannels(ECR_Ignore);
+		HitBoxComponentInfo.Value->SetCollisionResponseToChannel(ECC_HitBox,ECR_Block);
+	}
+	
 }
 
 void ABlasterCharacter::SpawnDefaultWeapon()
@@ -82,6 +168,52 @@ void ABlasterCharacter::SpawnDefaultWeapon()
 		AWeapon* Weapon = World->SpawnActor<AWeapon>(DefaultWeapon);
 		CombatComponent->EquipWeapon(Weapon);
 	}
+}
+
+float ABlasterCharacter::GetHitBoneDamageMultiply(FName BoneName)
+{
+	if (BoneName == FName("Head"))
+	{
+		return 1.5f;
+	}
+	if (BoneName == FName("Pelvis"))
+	{
+		return 1.2f;
+	}
+	if (BoneName == FName("Spine_02") || BoneName == FName("Spine_03"))
+	{
+		return 1.2f;
+	}
+	if (BoneName == FName("UpperArm_R") || BoneName == FName("UpperArm_L"))
+	{
+		return 0.8f;
+	}
+	if (BoneName == FName("LowerArm_R") || BoneName == FName("LowerArm_L"))
+	{
+		return 0.7f;
+	}
+	if (BoneName == FName("Hand_R") || BoneName == FName("Hand_L"))
+	{
+		return 0.6f;
+	}
+	if (BoneName == FName("Backpack") || BoneName == FName("Blanket"))
+	{
+		return 0.6f;
+	}
+	if (BoneName == FName("Thigh_R") || BoneName == FName("Thigh_L"))
+	{
+		return 0.8f;
+	}
+	if (BoneName == FName("Calf_R") || BoneName == FName("Calf_L"))
+	{
+		return 0.7f;
+	}
+	if (BoneName == FName("Foot_R") || BoneName == FName("Foot_L"))
+	{
+		return 0.6f;
+	}
+
+	return 1.f;
 }
 
 void ABlasterCharacter::BeginPlay()
@@ -153,6 +285,10 @@ void ABlasterCharacter::PostInitializeComponents()
 	if (BuffComponent)
 	{
 		BuffComponent->BlasterCharacter = this;
+	}
+	if (LagCompensationComponent)
+	{
+		LagCompensationComponent->BlasterCharacter = this;
 	}
 }
 
@@ -501,6 +637,10 @@ void ABlasterCharacter::EquippedButtonPressed()
 	if (CombatComponent)
 	{
 		if (CombatComponent->CombatState == ECombatState::Ecs_ThrowGrenade) return;
+		if (OverlappingWeapon != nullptr && OverlappingAmmoPickup == nullptr)
+		{
+			StopReloadMontage();
+		}
 		if (HasAuthority())
 		{
 			CombatComponent->EquipWeapon(OverlappingWeapon);
@@ -523,6 +663,10 @@ void ABlasterCharacter::ServerEquippedButtonPressed_Implementation()
 	if (CombatComponent)
 	{
 		if (CombatComponent->CombatState == ECombatState::Ecs_ThrowGrenade) return;
+		if (OverlappingWeapon != nullptr && OverlappingAmmoPickup == nullptr)
+		{
+			StopReloadMontage();
+		}
 		CombatComponent->EquipWeapon(OverlappingWeapon);
 		if (OverlappingAmmoPickup)
 		{
@@ -768,7 +912,19 @@ AController* InstigatedBy, AActor* DamageCauser)
 	
 	//RPC的开销比复制要大，所以不用多播RPC而是在服务器和复制函数中调用执行montage
 	PlayHitReactMontage();
-	if (CombatComponent) CombatComponent->CombatState = ECombatState::Ecs_Unoccupied;
+
+	if (CombatComponent)
+	{
+		if (HasAuthority())
+		{
+			CombatComponent->bLocallyReload = false;
+		}
+		if (CombatComponent->EquippedWeapon)
+		{
+			CombatComponent->ClientReWindCarriedAmmo(CombatComponent->EquippedWeapon->GetWeaponType(),CombatComponent->CarriedAmmo);
+		}
+		CombatComponent->CombatState = ECombatState::Ecs_Unoccupied;
+	}
 	OnAttributeChanged.Broadcast(Health,EAttributeType::Eat_Health);
 	OnAttributeChanged.Broadcast(Shield,EAttributeType::Eat_Shield);
 	int32 CureHealth = Health;

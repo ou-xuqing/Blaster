@@ -23,7 +23,6 @@ AGrenade::AGrenade()
 	ProjectileMovementComponent->bRotationFollowsVelocity = true;
 	ProjectileMovementComponent->SetIsReplicated(true);
 	ProjectileMovementComponent->bShouldBounce = true;
-	
 }
 
 void AGrenade::BeginPlay()
@@ -53,11 +52,11 @@ void AGrenade::ApplyRadiusDamage()
 			UGameplayStatics::ApplyRadialDamageWithFalloff(
 		this,
 		CurDamage,
-		CurDamage * MinDamageMagnitude,
+		CurDamage * DamageSpec.RadialDamageSpec.MinDamageMagnitude,
 		GetActorLocation(),
-		DamageInnerRadius,
-		DamageOuterRadius,
-		DamageFalloff,
+		DamageSpec.RadialDamageSpec.DamageInnerRadius,
+		DamageSpec.RadialDamageSpec.DamageOuterRadius,
+		DamageSpec.RadialDamageSpec.DamageFalloff,
 		UDamageType::StaticClass(),
 		TArray<AActor*>(),
 		this,

@@ -14,6 +14,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Player/BlasterPlayerController.h"
 #include "Sound/SoundCue.h"
+#include "Weapon/ShotGun.h"
 #include "Weapon/Weapon.h"
 #include "Weapon/WeaponTypes.h"
 
@@ -31,9 +32,8 @@ void UCombatComponent::BeginPlay()
 		BlasterCharacter->GetCharacterMovement()->MaxWalkSpeed = BaseWalkSpeed;
 		DefaultFOV = BlasterCharacter->GetCamera()->FieldOfView;
 		CurrentFOV = DefaultFOV;
-		if (BlasterCharacter->HasAuthority())
-		{
-			InitCarriedAmmo();
+		InitCarriedAmmo();
+		if (BlasterCharacter->HasAuthority()){
 			BlasterCharacter->SpawnDefaultWeapon();
 		}
 		BlasterCharacter->OnGrenadeAmountChanged.Broadcast(CurrentGrenade);
@@ -60,12 +60,18 @@ void UCombatComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty
 	DOREPLIFETIME(UCombatComponent,EquippedWeapon);
 	DOREPLIFETIME(UCombatComponent,SecondaryWeapon);
 	DOREPLIFETIME(UCombatComponent,bIsAiming);
-	DOREPLIFETIME_CONDITION(UCombatComponent,CarriedAmmo,COND_OwnerOnly);
 	DOREPLIFETIME(UCombatComponent,CombatState);
 	DOREPLIFETIME(UCombatComponent,CurrentGrenade);
 }
 
-//只会在服务器中执行,因为只会在服务器中调用这个函数
+/*
+ * 只会在服务器中执行,因为只会在服务器中调用这个函数
+ * 换弹时捡起武器有两种情况：没有第二把武器，有第二把武器
+ * 这些问题都只会出现在listen-server中，本地客户端都是在OnRep里面重置的。至于ClientReWindCarriedAmmo，这是使用服务器的权威值来保证客户端同步
+ * 其实禁止换弹时切枪和丢枪会解决大部分问题
+ * 没有：会打断换弹捡起武器放在背后，此时没有必要Reset大部分本地控制变量，因为武器没变，所以单独处理bLocallyReload
+ * 有：打断换弹丢弃当前武器然后捡起武器拿到手上，此时会走DropWeapon，在这个函数中我会Reset大部分本地控制的变量，包括bLocallyReload，所以不需要单独处理
+ */
 void UCombatComponent::EquipWeapon(AWeapon* InWeapon)
 {
 	if (BlasterCharacter == nullptr || InWeapon == nullptr) return;
@@ -77,6 +83,12 @@ void UCombatComponent::EquipWeapon(AWeapon* InWeapon)
 	if (EquippedWeapon != nullptr && SecondaryWeapon == nullptr)
 	{
 		EquipSecondaryWeapon(InWeapon);
+		
+		if (CombatState == ECombatState::Ecs_Reloading)
+		{
+			bLocallyReload = false;
+			ClientReWindCarriedAmmo(EquippedWeapon->GetWeaponType(),CarriedAmmo);
+		}
 	}else
 	{
 		EquipFirstWeapon(InWeapon);
@@ -91,24 +103,26 @@ void UCombatComponent::EquipFirstWeapon(AWeapon* InWeapon)
 {
 	//只在服务器中设置
 	EquippedWeapon = InWeapon;
+	//设置武器拥有者,装备后广播弹药
+	EquippedWeapon->SetOwner(BlasterCharacter);
 	//设置武器状态
 	EquippedWeapon->SetWeaponState(EWeaponState::Ews_Equipped);
 	
 	AttachActorToRightHand(EquippedWeapon);
 	PlayWeaponEquipSound();
+	CombatState = ECombatState::Ecs_Unoccupied;
 	UpdateCarriedAmmoWhenEquip();
-	ReloadWeaponWhenAmmoEmpty();
 	
-	//设置武器拥有者,装备后广播弹药
-	EquippedWeapon->SetOwner(BlasterCharacter);
+	EquippedWeapon->ClientSyncAmmo(EquippedWeapon->GetAmmo());
 	EquippedWeapon->BroadcastAmmoChangedToOwner();
+	ReloadWeaponWhenAmmoEmpty();
 }
 
 void UCombatComponent::EquipSecondaryWeapon(AWeapon* InWeapon)
 {
 	SecondaryWeapon = InWeapon;
-	SecondaryWeapon->SetWeaponState(EWeaponState::Ews_Equipped);
 	SecondaryWeapon->SetOwner(nullptr);
+	SecondaryWeapon->SetWeaponState(EWeaponState::Ews_Equipped);
 	AttachActorToBack(SecondaryWeapon);
 }
 
@@ -118,9 +132,10 @@ void UCombatComponent::SwapWeapon()
 	{
 		AWeapon* TempWeapon = EquippedWeapon;
 		ResetCharacterState();
+		CombatState = ECombatState::Ecs_Unoccupied;
+		ClientReWindCarriedAmmo(EquippedWeapon->GetWeaponType(),CarriedAmmo);
 		EquipFirstWeapon(SecondaryWeapon);
 		EquipSecondaryWeapon(TempWeapon);
-		CombatState = ECombatState::Ecs_Unoccupied;
 	}else if (EquippedWeapon == nullptr && SecondaryWeapon)
 	{
 		EquipFirstWeapon(SecondaryWeapon);
@@ -140,7 +155,7 @@ void UCombatComponent::OnRep_EquippedWeapon()
 		ReloadWeaponWhenAmmoEmpty();
 		
 		EquippedWeapon->BroadcastAmmoChangedToOwner();
-		BlasterCharacter->OnCarriedAmmoChanged.Broadcast(CarriedAmmo);
+		UpdateCarriedAmmoWhenEquip();
 		
 		BlasterCharacter->bUseControllerRotationYaw = true;
 		BlasterCharacter->GetCharacterMovement()->bOrientRotationToMovement = false;
@@ -150,6 +165,7 @@ void UCombatComponent::OnRep_EquippedWeapon()
 		BlasterCharacter->GetCharacterMovement()->bOrientRotationToMovement = true;
 		BlasterCharacter->ShowSniperScope(false);
 		BlasterCharacter->OnAmmoChanged.Broadcast(0);
+		BlasterCharacter->OnCarriedAmmoChanged.Broadcast(0);
 		bCanFire = true;
 		bShootButtonPressed = false;
 	}
@@ -241,7 +257,8 @@ void UCombatComponent::ResetCharacterState()
 	{
 		BlasterCharacter->ShowSniperScope(false);
 	}
-	bShootButtonPressed = false;
+	bLocallyReload = false;
+	bShootButtonPressed = false; 
 	BlasterCharacter->GetWorldTimerManager().ClearTimer(FireTimer);
 	bCanFire = true;
 	bContinueFire = false;
@@ -258,8 +275,11 @@ void UCombatComponent::ServerDropWeapon_Implementation()
 	if (EquippedWeapon)
 	{
 		ResetCharacterState();
+		ClientReWindCarriedAmmo(EquippedWeapon->GetWeaponType(),CarriedAmmo);
+		CombatState = ECombatState::Ecs_Unoccupied;
 		EquippedWeapon->DropWeapon(BlasterCharacter->GetActorForwardVector());
 		BlasterCharacter->OnAmmoChanged.Broadcast(0);
+		BlasterCharacter->OnCarriedAmmoChanged.Broadcast(0);
 		BlasterCharacter->bUseControllerRotationYaw = false;
 		BlasterCharacter->GetCharacterMovement()->bOrientRotationToMovement = true;
 		EquippedWeapon = nullptr;
@@ -280,9 +300,18 @@ void UCombatComponent::Fire()
 	if (CanFire())
 	{
 		bCanFire = false;
-		ServerWeaponFire(AimTarget,bContinueFire);
 		if (EquippedWeapon)
 		{
+			if (EquippedWeapon->GetFireType() == EFireType::Eft_ProjectileWeapon)
+			{
+				ProjectileWeaponFire();
+			}else if (EquippedWeapon->GetFireType() == EFireType::Eft_HitScanWeapon)
+			{
+				HitScanWeaponFire();
+			}else
+			{
+				ProjectileShotGunFire();
+			}
 			CrosshairFireFactor = 1.25f;
 		}
 		StartFireTimer();
@@ -301,34 +330,172 @@ void UCombatComponent::ShootButtonPress(bool bPress)
 	}
 }
 
+//本地直接执行，然后请求服务器发一个多播RPC。由于霰弹枪可以在换弹时开火，所以也需要对bLocallyReload进行判断。或者说只要判断霰弹枪能不能开火都要对bLocallyReload进行判断，因为我现在是客户端预测
+void UCombatComponent::LocalWeaponFire(const FVector_NetQuantize& HitTarget, bool bInContinueFire)
+{
+	if (BlasterCharacter == nullptr || EquippedWeapon == nullptr) return;
+	if ((CombatState == ECombatState::Ecs_Reloading || bLocallyReload)
+	&& (EquippedWeapon->GetWeaponType() == EWeaponType::Ewt_ShotGun || EquippedWeapon->GetWeaponType() == EWeaponType::Ewt_GrenadeLauncher))
+	{
+		BlasterCharacter->PlayShootingMontage(bIsAiming);
+		EquippedWeapon->WeaponFire(HitTarget,bInContinueFire);
+		return;
+	}
+	if (CombatState == ECombatState::Ecs_Unoccupied)
+	{
+		BlasterCharacter->PlayShootingMontage(bIsAiming);
+		EquippedWeapon->WeaponFire(HitTarget,bInContinueFire);
+	}
+}
+
+void UCombatComponent::LocalShotGunFire(const TArray<FVector_NetQuantize>& HitTargets, bool bInContinueFire)
+{
+	if (EquippedWeapon && EquippedWeapon->GetWeaponType() != EWeaponType::Ewt_ShotGun) return;
+	if (BlasterCharacter && (CombatState == ECombatState::Ecs_Reloading || bLocallyReload || CombatState == ECombatState::Ecs_Unoccupied))
+	{
+		BlasterCharacter->PlayShootingMontage(bIsAiming);
+		if (AShotGun* ShotGun = Cast<AShotGun>(EquippedWeapon))
+		{
+			ShotGun->ShotGunWeaponFire(HitTargets);
+		}
+	}
+}
+
+float UCombatComponent::ScatterForSpeedInTime()
+{
+	float SpeedAlpha = 0.f;
+	if (BlasterCharacter)
+	{
+		float MaXSpeed = BlasterCharacter->GetMovementComponent()->GetMaxSpeed();
+		float CurrentSpeed = BlasterCharacter->GetVelocity().Size();
+		SpeedAlpha = FMath::GetMappedRangeValueClamped(FVector2D(0.f,MaXSpeed),FVector2D(0.f,1.f),CurrentSpeed); 
+	}
+	if (ScatterForSpeedCurve)
+	{
+		return MaxScatterForSpeed * ScatterForSpeedCurve->GetFloatValue(SpeedAlpha);
+	}
+	return MaxScatterForSpeed * SpeedAlpha;
+}
+
+
+void UCombatComponent::ProjectileWeaponFire()
+{
+	FVector	Target = AimTarget;
+	if (EquippedWeapon->GetIsScatter() && bContinueFire)
+	{
+		Target = EquippedWeapon->CalculateShotSpread(AimTarget, ScatterForSpeedInTime(), bContinueFire);
+	}
+	if (!BlasterCharacter->HasAuthority())
+	{
+		LocalWeaponFire(Target,bContinueFire);
+	}
+	ServerWeaponFire(Target,bContinueFire);
+}
+
+void UCombatComponent::ProjectileShotGunFire()
+{
+	if (EquippedWeapon->GetWeaponType() != EWeaponType::Ewt_ShotGun) return;
+	
+	TArray<FVector_NetQuantize> HitTargets;
+	const AShotGun* ShotGun = Cast<AShotGun>(EquippedWeapon);
+	if (ShotGun == nullptr) return;
+	if (ShotGun)
+	{
+		for (int i = 0; i < ShotGun->GetNumsOfBullets(); i++)
+		{
+			HitTargets.Add(EquippedWeapon->CalculateShotSpread(AimTarget, ScatterForSpeedInTime(), bContinueFire));
+		}
+	}
+	if (!BlasterCharacter->HasAuthority())
+	{
+		LocalShotGunFire(HitTargets,bContinueFire);
+	}
+	ServerShotGunFire(HitTargets,bContinueFire);
+}
+
+void UCombatComponent::HitScanWeaponFire()
+{
+	FVector	Target = AimTarget;
+	if (EquippedWeapon->GetIsScatter() && bContinueFire)
+	{
+		Target = EquippedWeapon->CalculateShotSpread(AimTarget, ScatterForSpeedInTime(), bContinueFire);
+	}
+	if (!BlasterCharacter->HasAuthority())
+	{
+		LocalWeaponFire(Target,bContinueFire);
+	}
+	ServerWeaponFire(Target,bContinueFire);
+}
+
 void UCombatComponent::ServerWeaponFire_Implementation(const FVector_NetQuantize& HitTarget,bool bInContinueFire)
 {
-	if (BlasterCharacter && EquippedWeapon && CombatState == ECombatState::Ecs_Reloading && (EquippedWeapon->GetWeaponType() == EWeaponType::Ewt_ShotGun || EquippedWeapon->GetWeaponType() == EWeaponType::Ewt_GrenadeLauncher))
+	if (EquippedWeapon == nullptr) return;
+	if (EquippedWeapon->AmmoIsEmpty()) return;
+	if (BlasterCharacter && CombatState == ECombatState::Ecs_Reloading && (EquippedWeapon->GetWeaponType() == EWeaponType::Ewt_ShotGun
+		|| EquippedWeapon->GetWeaponType() == EWeaponType::Ewt_GrenadeLauncher))
 	{
 		MulticastWeaponFire(HitTarget,bInContinueFire);
+		//本来放在Local的，但是本地也会执行，而CombatState是复制变量，不要在本地修改
+		CombatState = ECombatState::Ecs_Unoccupied;
+		//Listen-Server的主机不会收到OnRep_CombatsState,我在那里修改了bLocallyReload，但是服务器没有修改，所以得在服务器中改一次
+		ClientReWindCarriedAmmo(EquippedWeapon->GetWeaponType(),CarriedAmmo);
+		bLocallyReload = false;
+		
+		return;
+	}
+	if (BlasterCharacter && CombatState == ECombatState::Ecs_Unoccupied)
+	{
+		MulticastWeaponFire(HitTarget,bInContinueFire);
+	}
+}
+//WithValidation: RPC的数据检查，可以检测你传入的数据是否合法，如果不合法直接踢出多人游戏
+bool UCombatComponent::ServerWeaponFire_Validate(const FVector_NetQuantize& HitTarget, bool bInContinueFire)
+{
+	return true;
+}
+
+void UCombatComponent::ServerShotGunFire_Implementation(const TArray<FVector_NetQuantize>& HitTargets,
+	bool bInContinueFire)
+{
+	const AShotGun* ShotGun = Cast<AShotGun>(EquippedWeapon);
+	if (ShotGun == nullptr) return;
+	if (EquippedWeapon->AmmoIsEmpty()) return;
+	
+	TArray<FVector_NetQuantize> ClampedHitTargets = HitTargets;
+	const int32 MaxHitTargets = FMath::Max(0, ShotGun->GetNumsOfBullets());
+	if (ClampedHitTargets.Num() > MaxHitTargets)
+	{
+		ClampedHitTargets.SetNum(MaxHitTargets);
+	}
+	
+	if (BlasterCharacter && EquippedWeapon && CombatState == ECombatState::Ecs_Reloading && EquippedWeapon->GetWeaponType() == EWeaponType::Ewt_ShotGun)
+	{
+		MulticastShotGunFire(ClampedHitTargets,bInContinueFire);
+		//本来放在Local的，但是本地也会执行，而CombatState是复制变量，不要在本地修改
+		CombatState = ECombatState::Ecs_Unoccupied;
+		//Listen-Server的主机不会收到OnRep_CombatsState,我在那里修改了bLocallyReload，但是服务器没有修改，所以得在服务器中改一次
+		ClientReWindCarriedAmmo(EquippedWeapon->GetWeaponType(),CarriedAmmo);
+		bLocallyReload = false;
 		return;
 	}
 	if (BlasterCharacter && EquippedWeapon && CombatState == ECombatState::Ecs_Unoccupied)
 	{
-		MulticastWeaponFire(HitTarget,bInContinueFire);
+		MulticastShotGunFire(ClampedHitTargets,bInContinueFire);
 	}
 }
 
 void UCombatComponent::MulticastWeaponFire_Implementation(const FVector_NetQuantize& HitTarget,bool bInContinueFire)
 {
-	if (BlasterCharacter && EquippedWeapon && CombatState == ECombatState::Ecs_Reloading
-		&& (EquippedWeapon->GetWeaponType() == EWeaponType::Ewt_ShotGun || EquippedWeapon->GetWeaponType() == EWeaponType::Ewt_GrenadeLauncher))
-	{
-		BlasterCharacter->PlayShootingMontage(bIsAiming);
-		EquippedWeapon->WeaponFire(HitTarget,bInContinueFire);
-		CombatState = ECombatState::Ecs_Unoccupied;
-		return;
-	}
-	if (BlasterCharacter && EquippedWeapon && CombatState == ECombatState::Ecs_Unoccupied)
-	{
-		BlasterCharacter->PlayShootingMontage(bIsAiming);
-		EquippedWeapon->WeaponFire(HitTarget,bInContinueFire);
-	}
+	//服务器控制的角色listen-server不要执行第二次
+	if (BlasterCharacter && BlasterCharacter->IsLocallyControlled() && !BlasterCharacter->HasAuthority()) return;
+	LocalWeaponFire(HitTarget,bInContinueFire);
+}
+
+void UCombatComponent::MulticastShotGunFire_Implementation(const TArray<FVector_NetQuantize>& HitTargets,
+	bool bInContinueFire)
+{
+	if (BlasterCharacter && BlasterCharacter->IsLocallyControlled() && !BlasterCharacter->HasAuthority()) return;
+	LocalShotGunFire(HitTargets,bInContinueFire);
 }
 
 bool UCombatComponent::CanFire()
@@ -336,9 +503,11 @@ bool UCombatComponent::CanFire()
 	if (EquippedWeapon == nullptr) return false;
 	if (!EquippedWeapon->AmmoIsEmpty() && bCanFire
 		&& (EquippedWeapon->GetWeaponType() == EWeaponType::Ewt_ShotGun || EquippedWeapon->GetWeaponType() == EWeaponType::Ewt_GrenadeLauncher)
-		&& CombatState == ECombatState::Ecs_Reloading) return true;
+		&& (CombatState == ECombatState::Ecs_Reloading || bLocallyReload)) return true;
+	if (bLocallyReload) return false;
 	return !EquippedWeapon->AmmoIsEmpty() && bCanFire && CombatState == ECombatState::Ecs_Unoccupied;
 }
+
 
 void UCombatComponent::StartFireTimer()
 {
@@ -498,28 +667,15 @@ void UCombatComponent::ServerLaunchGrenade_Implementation(const FVector_NetQuant
 	}
 }
 
-void UCombatComponent::Reload()
-{
-	if (EquippedWeapon && EquippedWeapon->GetAmmo() < EquippedWeapon->GetMagCapacity() && CarriedAmmo>0 && CombatState == ECombatState::Ecs_Unoccupied)
-	{
-		ServerReload();
-	}
-}
-
-void UCombatComponent::ServerReload_Implementation()
-{
-	if (EquippedWeapon && EquippedWeapon->GetAmmo() < EquippedWeapon->GetMagCapacity() && CarriedAmmo>0 && CombatState == ECombatState::Ecs_Unoccupied)
-	{
-		CombatState = ECombatState::Ecs_Reloading;
-		HandleReload();
-	}
-}
-
 void UCombatComponent::OnRep_CombatState()
 {
 	if (CombatState == ECombatState::Ecs_Reloading)
 	{
-		HandleReload();
+		//本地先执行了这个Montage，所以这里就不执行了
+		if (BlasterCharacter && !BlasterCharacter->IsLocallyControlled())
+		{
+			HandleReload();
+		}
 	}else if (CombatState == ECombatState::Ecs_Unoccupied)
 	{
 		if (BlasterCharacter)
@@ -529,6 +685,11 @@ void UCombatComponent::OnRep_CombatState()
 		if (bShootButtonPressed)
 		{
 			Fire();
+		}
+		//清理一下本地换弹
+		if (BlasterCharacter->IsLocallyControlled())
+		{
+			bLocallyReload = false;
 		}
 	}else if (CombatState == ECombatState::Ecs_ThrowGrenade)
 	{
@@ -541,11 +702,107 @@ void UCombatComponent::OnRep_CombatState()
 	}
 }
 
+void UCombatComponent::Reload()
+{
+	if (EquippedWeapon && EquippedWeapon->GetAmmo() < EquippedWeapon->GetMagCapacity() && CarriedAmmo>0 && CombatState == ECombatState::Ecs_Unoccupied && !bLocallyReload)
+	{
+		ServerReload();
+		bLocallyReload = true;
+		HandleReload();
+	}
+}
+
+void UCombatComponent::ServerReload_Implementation()
+{
+	if (EquippedWeapon && EquippedWeapon->GetAmmo() < EquippedWeapon->GetMagCapacity() && CarriedAmmo>0 && CombatState == ECombatState::Ecs_Unoccupied)
+	{
+		//其他客户端在OnRep中执行HandleReload
+		CombatState = ECombatState::Ecs_Reloading;
+		//防止listen-sever二次执行HandleReload
+		if (BlasterCharacter && !BlasterCharacter->IsLocallyControlled())
+		{
+			HandleReload();
+		}
+	}
+}
+
 void UCombatComponent::HandleReload()
 {
 	if (BlasterCharacter)
 	{
 		BlasterCharacter->PlayReloadMontage();
+	}
+}
+/*
+ * 客户端预测备弹的改变
+ * 首先这个没有装弹重要
+ * 因为武器不同，所以也用了一个Map来保存不同武器的请求缓存
+ * 服务器是不会有缓存的，因为服务器不需要预测
+ * 缓存主要是给单发装弹的武器使用的，因为单发装弹时，客户端可能装了3发才收到服务器的ClientRPC确认，而为了不发生回弹，通过缓存来得到客户端当前应该是多少子弹
+ */
+void UCombatComponent::SpendCarriedAmmo(EWeaponType WeaponType,int32 InAmmo)
+{
+	if (CarriedAmmoMap.Contains(WeaponType))
+	{
+		CarriedAmmoMap[WeaponType] =FMath::Clamp(CarriedAmmoMap[WeaponType]-InAmmo,0,CarriedAmmoMap[WeaponType]) ;
+		CarriedAmmo = CarriedAmmoMap[WeaponType];
+	}else
+	{
+		CarriedAmmo = 0;
+	}
+	if (BlasterCharacter)
+	{
+		if (BlasterCharacter->HasAuthority())
+		{
+			ClientUpdateCarriedAmmo(WeaponType,CarriedAmmo);
+		}else if ( BlasterCharacter->IsLocallyControlled() )
+		{
+			++SpendCarriedAmmoSequenceMap[WeaponType];
+		}
+	}
+}
+
+void UCombatComponent::ClientReWindCarriedAmmo_Implementation(EWeaponType WeaponType, int32 ServerCarriedAmmo)
+{
+	if (CarriedAmmoMap.Contains(WeaponType))
+	{
+		CarriedAmmoMap[WeaponType] = ServerCarriedAmmo;
+		SpendCarriedAmmoSequenceMap[WeaponType] = 0;
+	}
+	if (EquippedWeapon && EquippedWeapon->GetWeaponType() == WeaponType)
+	{
+		if (BlasterCharacter)
+		{
+			CarriedAmmo = CarriedAmmoMap[WeaponType];
+			BlasterCharacter->OnCarriedAmmoChanged.Broadcast(CarriedAmmo);
+		}
+	}
+}
+
+/*
+ *需要WeaponType其实是为了防止RPC到达客户端时，客户端已经切换了武器。
+ *在这种情况下WeaponType记录了上次换弹的武器，去修改那个值
+ */
+void UCombatComponent::ClientUpdateCarriedAmmo_Implementation(EWeaponType WeaponType, int32 ServerCarriedAmmo)
+{
+	if (BlasterCharacter && BlasterCharacter->HasAuthority()) return;
+	if (CarriedAmmoMap.Contains(WeaponType))
+	{
+		CarriedAmmoMap[WeaponType] = ServerCarriedAmmo;
+		if (SpendCarriedAmmoSequenceMap[WeaponType] > 0)
+		{
+			--SpendCarriedAmmoSequenceMap[WeaponType];
+		}
+		if (WeaponType == EWeaponType::Ewt_GrenadeLauncher || WeaponType == EWeaponType::Ewt_ShotGun)
+		{
+			CarriedAmmoMap[WeaponType] -= SpendCarriedAmmoSequenceMap[WeaponType];
+		}
+		//当前持有换弹的武器才会修改CarriedAmmo
+		if (BlasterCharacter && EquippedWeapon && EquippedWeapon->GetWeaponType() == WeaponType)
+		{
+			CarriedAmmo = CarriedAmmoMap[WeaponType];
+			BlasterCharacter->OnCarriedAmmoChanged.Broadcast(CarriedAmmoMap[WeaponType]);
+		}
 	}
 }
 
@@ -557,14 +814,7 @@ void UCombatComponent::ReloadWeaponAmmo()
 		int32 CurrentAmmo = EquippedWeapon->GetAmmo();
 		int32 LoadAmmo = WeaponMag - CurrentAmmo;
 		int32 InAmmo = FMath::Min(LoadAmmo,CarriedAmmo);
-		CarriedAmmo-=InAmmo;
-		if (CarriedAmmoMap.Contains(EquippedWeapon->GetWeaponType()))
-		{
-			CarriedAmmoMap[EquippedWeapon->GetWeaponType()] = CarriedAmmo;
-		}else
-		{
-			CarriedAmmo = 0;
-		}
+		SpendCarriedAmmo(EquippedWeapon->GetWeaponType(),InAmmo);
 		EquippedWeapon->AddAmmo(InAmmo);
 		BlasterCharacter->OnCarriedAmmoChanged.Broadcast(CarriedAmmo);
 	}
@@ -572,20 +822,13 @@ void UCombatComponent::ReloadWeaponAmmo()
 
 void UCombatComponent::ShotGunReloadOneAmmo()
 {
-	if (EquippedWeapon && BlasterCharacter)
+	if (EquippedWeapon && BlasterCharacter && (BlasterCharacter->HasAuthority() || BlasterCharacter->IsLocallyControlled()))
 	{
-		if (!BlasterCharacter->HasAuthority()) return;
 		int32 InAmmo = 1;
-		CarriedAmmo = FMath::Clamp(CarriedAmmo - InAmmo,0,CarriedAmmo);
-		if (CarriedAmmoMap.Contains(EquippedWeapon->GetWeaponType()))
-		{
-			CarriedAmmoMap[EquippedWeapon->GetWeaponType()] = CarriedAmmo;
-		}else
-		{
-			CarriedAmmo = 0;
-		}
+		SpendCarriedAmmo(EquippedWeapon->GetWeaponType(),InAmmo);
 		EquippedWeapon->AddAmmo(InAmmo);
 		BlasterCharacter->OnCarriedAmmoChanged.Broadcast(CarriedAmmo);
+		
 		bCanFire = true;
 		if (EquippedWeapon->AmmoIsFull() || CarriedAmmo <= 0)
 		{
@@ -599,18 +842,21 @@ void UCombatComponent::FinishReloading()
 {
 	if (BlasterCharacter)
 	{
+		if ((BlasterCharacter->HasAuthority() || BlasterCharacter->IsLocallyControlled()) &&
+			EquippedWeapon && EquippedWeapon->GetWeaponType() != EWeaponType::Ewt_GrenadeLauncher &&
+			EquippedWeapon->GetWeaponType() != EWeaponType::Ewt_ShotGun)
+		{
+			ReloadWeaponAmmo();
+		}
 		if (BlasterCharacter->HasAuthority())
 		{
 			CombatState = ECombatState::Ecs_Unoccupied;
-			if (EquippedWeapon && EquippedWeapon->GetWeaponType() != EWeaponType::Ewt_GrenadeLauncher && EquippedWeapon->GetWeaponType() != EWeaponType::Ewt_ShotGun)
-			{
-				ReloadWeaponAmmo();
-			}
 			if (bShootButtonPressed)
 			{
 				Fire();
 			}
 		}
+		bLocallyReload = false;
 	}
 }
 
@@ -638,19 +884,26 @@ void UCombatComponent::TraceUnderCrosshair(FHitResult& HitResult)
 	{
 		//射线检测
 		FVector Start = CrosshairWorldPosition;
+		
 		if (BlasterCharacter)
 		{
 			//把起点变成角色前面，这样就不会瞄准背后的敌人
 			float DistanceToCharacter = (BlasterCharacter->GetActorLocation() - CrosshairWorldPosition).Size();
 			//100.f是防止摄像机过近锁自己，也防止锁旁边的人
-			Start += CrosshairWorldDirection * (DistanceToCharacter + 100.f);
+			Start += CrosshairWorldDirection * DistanceToCharacter;
 		}
-		FVector End = Start + CrosshairWorldDirection * 100000.0f;
-		GetWorld()->LineTraceSingleByChannel(HitResult,Start,End,ECC_Visibility);
+		FVector End = Start + CrosshairWorldDirection * 100000.f;
+		
+		FCollisionQueryParams Params;
+		Params.AddIgnoredActor(BlasterCharacter);
+		if (EquippedWeapon) Params.AddIgnoredActor(EquippedWeapon);
+		
+		GetWorld()->LineTraceSingleByChannel(HitResult,Start,End,ECC_Visibility, Params);
 		if (!HitResult.bBlockingHit)
 		{
 			HitResult.ImpactPoint = End;
 		}
+
 		if (HitResult.GetActor() && HitResult.GetActor()->Implements<UPlayerInterface>())
 		{
 			CrosshairPackage.CrosshairColor = FLinearColor::Red;
@@ -658,6 +911,7 @@ void UCombatComponent::TraceUnderCrosshair(FHitResult& HitResult)
 		{
 			CrosshairPackage.CrosshairColor = FLinearColor::White;
 		}
+		
 	}
 }
 
@@ -682,12 +936,21 @@ void UCombatComponent::SetAiming(bool bInAiming)
 		{
 			BlasterCharacter->ShowSniperScope(bInAiming);
 		}
+		if (BlasterCharacter->IsLocallyControlled()) bAimButtonPressed = bInAiming;
 	}
 }
 void UCombatComponent::ServerSetAiming_Implementation(bool bInAiming)
 {
 	BlasterCharacter->GetCharacterMovement()->MaxWalkSpeed = bInAiming ? AimWalkSpeed : BaseWalkSpeed;
 	bIsAiming = bInAiming;
+}
+
+void UCombatComponent::OnRep_bIsAiming()
+{
+	if (BlasterCharacter && BlasterCharacter->IsLocallyControlled())
+	{
+		bIsAiming = bAimButtonPressed;
+	}
 }
 
 void UCombatComponent::InterpFOV(float DeltaTime)
@@ -707,7 +970,7 @@ void UCombatComponent::InterpFOV(float DeltaTime)
 		BlasterCharacter->GetCamera()->SetFieldOfView(CurrentFOV);
 	}
 }
-
+/*
 void UCombatComponent::OnRep_CarriedAmmo()
 {
 	if (BlasterCharacter)
@@ -720,7 +983,7 @@ void UCombatComponent::OnRep_CarriedAmmo()
 			BlasterCharacter->JumpToShotGunEnd();
 		}
 	}
-}
+}*/
 
 void UCombatComponent::InitCarriedAmmo()
 {
@@ -739,6 +1002,14 @@ void UCombatComponent::InitCarriedAmmo()
 	MaxCarriedAmmoMap.Emplace(EWeaponType::Ewt_ShotGun,StartingShotGunAmmo * 2);
 	MaxCarriedAmmoMap.Emplace(EWeaponType::Ewt_Sniper,StartingSniperAmmo * 2);
 	MaxCarriedAmmoMap.Emplace(EWeaponType::Ewt_GrenadeLauncher,StartingGrenadeAmmo * 2);
+
+	SpendCarriedAmmoSequenceMap.Emplace(EWeaponType::Ewt_AssaultRifle,0);
+	SpendCarriedAmmoSequenceMap.Emplace(EWeaponType::Ewt_RocketLauncher,0);
+	SpendCarriedAmmoSequenceMap.Emplace(EWeaponType::Ewt_Pistol,0);
+	SpendCarriedAmmoSequenceMap.Emplace(EWeaponType::Ewt_Smg,0);
+	SpendCarriedAmmoSequenceMap.Emplace(EWeaponType::Ewt_ShotGun,0);
+	SpendCarriedAmmoSequenceMap.Emplace(EWeaponType::Ewt_Sniper,0);
+	SpendCarriedAmmoSequenceMap.Emplace(EWeaponType::Ewt_GrenadeLauncher,0);
 }
 
 
@@ -747,6 +1018,7 @@ void UCombatComponent::PickupAmmo(EWeaponType WeaponType, int32 AmmoAmount)
 	if (CarriedAmmoMap.Contains(WeaponType))
 	{
 		CarriedAmmoMap[WeaponType] = FMath::Clamp(CarriedAmmoMap[WeaponType] + AmmoAmount,0,MaxCarriedAmmoMap[WeaponType]);
+		ClientAddCarriedAmmo(WeaponType,CarriedAmmoMap[WeaponType]);
 		if (EquippedWeapon && EquippedWeapon->GetWeaponType() == WeaponType)
 		{
 			CarriedAmmo = CarriedAmmoMap[WeaponType];
@@ -760,5 +1032,30 @@ void UCombatComponent::PickupAmmo(EWeaponType WeaponType, int32 AmmoAmount)
 			}
 		}
 	}
-	
+}
+
+void UCombatComponent::ClientAddCarriedAmmo_Implementation(EWeaponType WeaponType, int32 ServerCarriedAmmo)
+{
+	if (BlasterCharacter && BlasterCharacter->HasAuthority()) return;
+	CarriedAmmoMap[WeaponType] = ServerCarriedAmmo;
+	if (WeaponType == EWeaponType::Ewt_GrenadeLauncher || WeaponType == EWeaponType::Ewt_ShotGun)
+	{
+		CarriedAmmoMap[WeaponType] = ServerCarriedAmmo - SpendCarriedAmmoSequenceMap[WeaponType];
+	}
+	if (EquippedWeapon && EquippedWeapon->GetWeaponType() == WeaponType)
+	{
+		CarriedAmmo = ServerCarriedAmmo;
+		if (WeaponType == EWeaponType::Ewt_GrenadeLauncher || WeaponType == EWeaponType::Ewt_ShotGun)
+		{
+			CarriedAmmo = ServerCarriedAmmo - SpendCarriedAmmoSequenceMap[WeaponType];
+		}
+		if (BlasterCharacter)
+		{
+			BlasterCharacter->OnCarriedAmmoChanged.Broadcast(CarriedAmmo);
+		}
+		if (EquippedWeapon->AmmoIsEmpty())
+		{
+			Reload();
+		}
+	}
 }

@@ -3,19 +3,20 @@
 
 #include "Weapon/ShotGun.h"
 
+#include "BulletActor/Casing.h"
+
 
 void AShotGun::FireMultipleProjectiles(const FVector& HitTarget, const FVector& Start,float InAdditiveScatter)
 {
 	ShotSpread.Empty();
 	for (int i = 0;i<NumsOfBullets;i++)
 	{
-		ShotSpread.Add(CalculateShotSpread(Start,HitTarget,InAdditiveScatter));
+		ShotSpread.Add((CalculateShotSpread(HitTarget,InAdditiveScatter) - Start).GetSafeNormal());
 	}
 	for (FVector Spread : ShotSpread)
 	{
 		SpawnProjectile(Start,Spread.Rotation());
 	}
-	SpendRound();
 }
 
 void AShotGun::WeaponFire(const FVector& HitTarget,bool bIsContinueFire)
@@ -26,10 +27,22 @@ void AShotGun::WeaponFire(const FVector& HitTarget,bool bIsContinueFire)
 
 	if (bIsScatter && bIsContinueFire)
 	{
-		FireMultipleProjectiles(HitTarget, Start, AdditiveScatter);
+		FireMultipleProjectiles(HitTarget, Start, WeaponAdditiveScatter);
 	}else
 	{
 		FireMultipleProjectiles(HitTarget, Start,0.f);
+	}
+}
+
+void AShotGun::ShotGunWeaponFire(const TArray<FVector_NetQuantize>& HitLocations)
+{
+	if (HitLocations.Num() <= 0) return;
+	AWeapon::WeaponFire(HitLocations[0]);
+	const FVector Start = GetWeaponMesh()->GetSocketLocation(FName("MuzzleFlash"));
+	for (auto& HitLocation : HitLocations)
+	{
+		FVector ToTarget = (HitLocation - Start).GetSafeNormal();
+		SpawnProjectile(Start,ToTarget.Rotation());
 	}
 }
 

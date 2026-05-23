@@ -109,5 +109,13 @@ void UBlasterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	bUseIK = CombatState != ECombatState::Ecs_Reloading && CombatState != ECombatState::Ecs_ThrowGrenade;
 	bUseAimOffset = CombatState != ECombatState::Ecs_Reloading;
 	bUseTransformRightHand = CombatState != ECombatState::Ecs_Reloading && CombatState != ECombatState::Ecs_ThrowGrenade;
-	
+	if (BlasterCharacter->IsLocallyControlled() && CombatState != ECombatState::Ecs_ThrowGrenade)
+	{
+		// Use the predicted local reload state so owner-side pose state stays in sync with the montage.
+		const bool bIsLocallyReloading = BlasterCharacter->GetLocallyReload();
+		bUseIK = !bIsLocallyReloading;
+		bUseAimOffset = !bIsLocallyReloading;
+		bUseTransformRightHand = !bIsLocallyReloading;
+	}
+
 }

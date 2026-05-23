@@ -77,7 +77,7 @@ void UOverlayUserWidgetController::BindCallbacksToDependencies()
 		{
 			BlasterPlayerState->OnDefeatsChanged.Remove(OnDefeatsChangedDelegateHandle);
 		}
-		
+
 		OnScoreChangedDelegateHandle = BlasterPlayerState->OnScoreChanged.AddLambda([this](float NewScore)
 		{
 			OnScoreChangedDelegate.Broadcast(NewScore);
@@ -86,6 +86,7 @@ void UOverlayUserWidgetController::BindCallbacksToDependencies()
 		{
 			OnDefeatsChangedDelegate.Broadcast(NewDefeat);
 		});
+
 	}
 
 	if (BlasterPlayerController)
@@ -94,10 +95,18 @@ void UOverlayUserWidgetController::BindCallbacksToDependencies()
 		{
 			BlasterPlayerController->OnGameTimeChanged.Remove(OnGameTimeChangedDelegateHandle);
 		}
-		
+		if (OnSetPingDelegateHandle.IsValid())
+		{
+			BlasterPlayerController->OnSetPing.Remove(OnSetPingDelegateHandle);
+		}
 		OnGameTimeChangedDelegateHandle = BlasterPlayerController->OnGameTimeChanged.AddLambda([this](float NewTime)
 		{
 			OnGameTimeChangedDelegate.Broadcast(NewTime);
+		});
+
+		OnSetPingDelegateHandle = BlasterPlayerController->OnSetPing.AddLambda([this](float NewPing)
+		{
+			OnSetPingDelegate.Broadcast(NewPing);
 		});
 	}
 }
@@ -112,4 +121,13 @@ float UOverlayUserWidgetController::GetMaxShield() const
 {
 	checkf(BlasterCharacter,TEXT("WidgetController Character Is NULL"));
 	return BlasterCharacter->GetMaxShield();
+}
+
+float UOverlayUserWidgetController::GetHighPingThreshold() const
+{
+	if (BlasterPlayerController)
+	{
+		return BlasterPlayerController->GetHighPingThreshold();
+	}
+	return 80.f;
 }

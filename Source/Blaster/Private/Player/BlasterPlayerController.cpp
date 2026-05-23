@@ -41,6 +41,38 @@ void ABlasterPlayerController::PlayerTick(float DeltaTime)
 			TimeSyncRunningTime = 0.f;
 		}
 	}
+	if (IsLocalController())
+	{
+		CheckCurrentPing(DeltaTime);
+	}
+}
+
+void ABlasterPlayerController::CheckCurrentPing(float DeltaTime)
+{
+	CheckPingTime += DeltaTime;
+	if (CheckPingTime > PingTimeToCheck)
+	{
+		
+		if (ABlasterPlayerState* BlasterPlayerState = GetPlayerState<ABlasterPlayerState>())
+		{
+			float CurrentPing = BlasterPlayerState->GetCompressedPing() * 4;
+			OnSetPing.Broadcast(CurrentPing);
+			CheckPingTime = 0.f;
+			//ping过高,由于ping是本地捕获的，所以需要一个ServerRPC告诉服务器本地ping过高，然后服务器更改武器的ServerSideRewind
+			if (CurrentPing > HighPingThreshold)
+			{
+				ServerReportPingStatus(false);
+			}else
+			{
+				ServerReportPingStatus(true);
+			}
+		}
+	}
+}
+
+void ABlasterPlayerController::ServerReportPingStatus_Implementation(bool bInPing)
+{
+	OnHighPing.Broadcast(bInPing);
 }
 
 void ABlasterPlayerController::SetupInputComponent()
@@ -461,6 +493,7 @@ float ABlasterPlayerController::GetServerTime()
 	return GetWorld()->GetTimeSeconds() + ServerClientTimeDelta;
 }
 
+
 void ABlasterPlayerController::ServerRequestGameTime_Implementation(float RequestTimeOfClient)
 {
 	ClientReportServerTime(GetWorld()->GetTimeSeconds(),RequestTimeOfClient);
@@ -471,6 +504,7 @@ void ABlasterPlayerController::ClientReportServerTime_Implementation(float Serve
 {
 	float CurrentClientTime = GetWorld()->GetTimeSeconds();
 	float RTT = CurrentClientTime - RequestTimeOfClient;
-	float CurrentServerTime = ServerTimeOfReceivedClientTime + (0.5f * RTT);
+	SingleReTurnTime = RTT * 0.5f;
+	float CurrentServerTime = ServerTimeOfReceivedClientTime + SingleReTurnTime;
 	ServerClientTimeDelta = CurrentServerTime - CurrentClientTime;
 }

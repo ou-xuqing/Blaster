@@ -6,6 +6,7 @@
 #include "WeaponTypes.h"
 #include "Sound/SoundCue.h"
 #include "GameFramework/Actor.h"
+#include "Interface/DamageCauserInterface.h"
 #include "Weapon.generated.h"
 
 class ACasing;
@@ -21,10 +22,17 @@ enum class EWeaponState : uint8
 	Ews_Dropped UMETA(DisplayName = "Dropped"),
 	Ews_Max UMETA(DisplayName = "DefaultMax")//用来标识该枚举有多少个类型
 };
-
+//不同类型武器射击的计算方式不同
+UENUM(BlueprintType)
+enum class EFireType : uint8
+{
+	Eft_ProjectileWeapon,
+	Eft_ShotGun,
+	Eft_HitScanWeapon
+};
 
 UCLASS()
-class BLASTER_API AWeapon : public AActor
+class BLASTER_API AWeapon : public AActor, public IDamageCauserInterface
 {
 	GENERATED_BODY()
 	
@@ -42,9 +50,17 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 
 	EWeaponType GetWeaponType() const{ return WeaponType; }
+		
+	UPROPERTY(EditDefaultsOnly,Category="WeaponData | State")
+	EFireType FireType = EFireType::Eft_ProjectileWeapon;
+	
+	EFireType GetFireType() const {return FireType;}
 	
 	void EnableWeaponMeshRenderCustomDepth(bool bInEnable);
-	
+
+	FVector CalculateShotSpread(const FVector& Target,float AdditiveScatter = 0.f, bool bInContinueFire = false);
+
+	bool GetIsScatter() const {return bIsScatter;}
 	//IK用
 	USkeletalMeshComponent* GetWeaponMesh(){return WeaponMesh;}
 
@@ -78,17 +94,20 @@ public:
 	bool AmmoIsFull() const {return Ammo == MagCapacity;}
 	
 	void AddAmmo(int32 InAmmo);
-
+	UFUNCTION(Client,Reliable)
+	void ClientSyncAmmo(int32 ServerAmmo);
+	
 	int32 GetAmmo() const {return Ammo;}
 	int32 GetMagCapacity() const {return MagCapacity;}
 
 	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Sound")
 	TObjectPtr<USoundCue> EquipSound;
+
+	virtual FDamageSpec GetDamageSpec() const override {return DamageSpec;}
+	virtual float GetDamage() const {return Damage;}
 protected:
 	virtual void BeginPlay() override;
-
-	FVector CalculateShotSpread(const FVector& Start,const FVector& Target,float AdditiveScatter = 0.f);
-
+	
 	UFUNCTION()
 	virtual void OnSphereOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
@@ -96,10 +115,18 @@ protected:
 	virtual void OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 	UFUNCTION()
-	void OnRep_Ammo();
-
+	void OnHighPingToChangeServerSideRewind(bool InChanged);
+	
 	void SpendRound();
 
+	UFUNCTION(Client,Reliable)
+	void ClientUpdateAmmo(int32 ServerAmmo);
+	UFUNCTION(Client,Reliable)
+	void ClientAddAmmo(int32 ServerAmmo);
+	//SpendSequence用来记录客户端还未同步的但已经减少的弹药
+	int32 SpendSequence = 0;
+	//AddSequence用来记录客户端还未同步的但已经增加的弹药
+	int32 AddSequence = 0;
 	UPROPERTY(EditAnywhere,Category="WeaponData | Scatter")
 	bool bIsScatter = true;
 
@@ -111,6 +138,18 @@ protected:
 
 	UPROPERTY(EditAnywhere,Category="WeaponData | OutLine")
 	bool bUseOutLine = false;
+	
+	UPROPERTY(EditAnywhere,Category="WeaponData | DamageDate")
+	FDamageSpec DamageSpec;
+	
+	UPROPERTY(EditAnywhere,Category="WeaponData | Damage")
+	float Damage = 10.f;
+
+	UPROPERTY(Replicated,EditAnywhere,Category="LagCompensation")
+	bool bUseServerSideRewind = false;
+	
+	UPROPERTY(EditAnywhere,Category="WeaponData | Damage")
+	float WeaponAdditiveScatter = 10.f;
 private:	
 
 	UPROPERTY(VisibleAnywhere,Category="Weapon")
@@ -121,7 +160,7 @@ private:
 	
 	UPROPERTY(ReplicatedUsing=OnRep_WeaponState,VisibleAnywhere,Category="WeaponData | State")
 	EWeaponState WeaponState = EWeaponState::Ews_Initial;
-
+	
 	UPROPERTY(VisibleAnywhere,Category="Weapon")
 	TObjectPtr<UWidgetComponent> PickUpWidget;
 
@@ -152,10 +191,11 @@ private:
 	 * 现阶段只能拿一把武器，多拿时上一把自动丢弃，不用广播，因为会触发拾取
 	 * 开火，拾取都是广播Ammo
 	 */
-	UPROPERTY(EditDefaultsOnly,ReplicatedUsing=OnRep_Ammo,Category="WeaponData | Ammo")
+	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Ammo")
 	int32 Ammo = 30;
 
 	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Ammo")
-	int32 MagCapacity = 30; 
+	int32 MagCapacity = 30;
+
 };
 

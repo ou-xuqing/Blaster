@@ -17,6 +17,7 @@ class ABlasterPlayerController;
 class AWeapon;
 class ABlasterCharacter;
 
+
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class BLASTER_API UCombatComponent : public UActorComponent
 {
@@ -70,6 +71,9 @@ public:
 	int32 GetCarriedAmmo() const { return EquippedWeapon ? CarriedAmmo : 0;}
 
 	void SwapWeapon();
+
+	bool GetLocallyIsReload() const {return bLocallyReload;}
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -82,12 +86,29 @@ protected:
 	 * FVector_NetQuantize是UE对于FVector类型加速网络传输的特殊化
 	 * 使用FVector_NetQuantize来传输就不需要给HitTarget设置一个复制标志
 	 */
-	UFUNCTION(Server,Reliable)
+	//WithValidation: RPC的数据检查，可以检测你传入的数据是否合法，如果不合法直接踢出多人游戏
+	UFUNCTION(Server,Reliable,WithValidation)
 	void ServerWeaponFire(const FVector_NetQuantize& HitTarget,bool bInContinueFire);
+	UFUNCTION(Server,Reliable)
+	void ServerShotGunFire(const TArray<FVector_NetQuantize>& HitTargets,bool bInContinueFire);
 	
 	UFUNCTION(NetMulticast,Reliable)
 	void MulticastWeaponFire(const FVector_NetQuantize& HitTarget,bool bInContinueFire);
+	UFUNCTION(NetMulticast,Reliable)
+	void MulticastShotGunFire(const TArray<FVector_NetQuantize>& HitTargets,bool bInContinueFire);
+	
+	void LocalWeaponFire(const FVector_NetQuantize& HitTarget,bool bInContinueFire);
 
+	void LocalShotGunFire(const TArray<FVector_NetQuantize>& HitTargets,bool bInContinueFire);
+	
+	void ProjectileWeaponFire();
+
+	void HitScanWeaponFire();
+
+	void ProjectileShotGunFire();
+	
+	float ScatterForSpeedInTime();
+	
 	void StartFireTimer();
 	void FireTimerFinished();
 	
@@ -110,6 +131,24 @@ protected:
 
 	void EquipFirstWeapon(AWeapon* InWeapon);
 	void EquipSecondaryWeapon(AWeapon* InWeapon);
+
+	void SpendCarriedAmmo(EWeaponType WeaponType,int32 InAmmo);
+	UFUNCTION(Client,Reliable)
+	void ClientUpdateCarriedAmmo(EWeaponType WeaponType,int32 ServerCarriedAmmo);
+
+	UFUNCTION(Client,Reliable)
+	void ClientAddCarriedAmmo(EWeaponType WeaponType,int32 ServerCarriedAmmo);
+
+	UFUNCTION(Client,Reliable)
+	void ClientReWindCarriedAmmo(EWeaponType WeaponType,int32 ServerCarriedAmmo);
+		
+	/*
+	 * 本地用来判断是否在换弹，主要用来影响是否对左手做IK，也会禁止开火。
+	 * 由于霰弹枪可以在换弹时开火，所以也需要对bLocallyReload进行判断。
+	 * 或者说只要判断霰弹枪能不能开火都要对bLocallyReload进行判断，因为我现在是客户端预测。
+	 * 如果只用CombatComponent来判断，这样霰弹枪在换弹时开火还是需要等服务器的同步
+	 */
+	bool bLocallyReload = false;
 	
 private:
 	//为了告诉动画人物是否装备了武器
@@ -121,10 +160,15 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<ABlasterCharacter> BlasterCharacter;
+	
+	UPROPERTY(ReplicatedUsing=OnRep_bIsAiming)
+	bool bIsAiming = false;
 
-	UPROPERTY(Replicated)
-	bool bIsAiming;
+	bool bAimButtonPressed = false;
 
+	UFUNCTION()
+	void OnRep_bIsAiming();
+	
 	UPROPERTY(EditAnywhere)
 	float BaseWalkSpeed = 600.f;
 
@@ -152,6 +196,12 @@ private:
 	float CrosshairAimFactor = 0.f;
 	float CrosshairFireFactor = 0.f;
 	
+	UPROPERTY(EditDefaultsOnly,Category="Scatter")
+	TObjectPtr<UCurveFloat> ScatterForSpeedCurve;
+
+	UPROPERTY(EditDefaultsOnly,Category="Scatter")
+	float MaxScatterForSpeed = 45.f;
+	
 	FVector AimTarget = FVector();
 	//瞄准放大
 	float DefaultFOV;
@@ -163,14 +213,12 @@ private:
 
 	bool bContinueFire = false;
 	
-	UPROPERTY(ReplicatedUsing=OnRep_CarriedAmmo)
+	UPROPERTY()
 	int32 CarriedAmmo = 0;
-
-	UFUNCTION()
-	void OnRep_CarriedAmmo();
 	//不同类型武器携带不同弹药
 	TMap<EWeaponType,int32> CarriedAmmoMap;
 	TMap<EWeaponType,int32> MaxCarriedAmmoMap;
+	TMap<EWeaponType,int32> SpendCarriedAmmoSequenceMap;
 	UPROPERTY(EditDefaultsOnly,Category="Ammo")
 	int32 StartingARAmmo = 30;
 	UPROPERTY(EditDefaultsOnly,Category="Ammo")
@@ -199,4 +247,5 @@ private:
 	
 	UFUNCTION()
 	void OnRep_CombatState();
+
 };

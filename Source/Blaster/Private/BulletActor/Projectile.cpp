@@ -22,6 +22,7 @@ AProjectile::AProjectile()
 	CollisionBox->SetCollisionResponseToChannel(ECC_WorldStatic,ECR_Block);
 	CollisionBox->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);
 	CollisionBox->SetCollisionResponseToChannel(ECC_SkeletalMesh,ECR_Block);
+	CollisionBox->SetCollisionResponseToChannel(ECC_DamagePrevention,ECR_Ignore);
 	SetRootComponent(CollisionBox);
 
 }
@@ -69,7 +70,11 @@ void AProjectile::BeginPlay()
 		CollisionBox->IgnoreActorWhenMoving(GetOwner(),true);
 	}
 	SpawnTracerEffect();
-	//撞击不在客户端中计算
+	/*
+	 * 本地生成的非复制变量，HasAuthority == true。注意：本地不是指本地控制的玩家生成，而是本客户端中生成的。
+	 * 至于为什么远程客户端（非服务器）生成的子弹绑定OnHit撞到人物后不会Apply伤害而是只有表现，
+	 *			是因为其他客户端上的“远程玩家角色”通常没有本地PlayerController，所以这里拿不到 PlayerController。
+	 */
 	if (HasAuthority())
 	{
 		CollisionBox->OnComponentHit.AddDynamic(this,&ThisClass::OnHit);
@@ -113,7 +118,7 @@ void AProjectile::Destroyed()
 	}
 }
 
-FDamageSpec AProjectile::GetDamageSpec()
+FDamageSpec AProjectile::GetDamageSpec() const
 {
 	if (DamageSpec.IsValid())
 	{

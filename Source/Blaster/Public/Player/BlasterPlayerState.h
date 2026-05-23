@@ -8,6 +8,7 @@
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnScoreChanged,float Score);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnDefeatsChanged,int32 Defeat)
+
 /**
  * 
  */
@@ -16,7 +17,7 @@ class BLASTER_API ABlasterPlayerState : public APlayerState
 {
 	GENERATED_BODY()
 public:
-
+	
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	
 	virtual void OnRep_Score() override;
@@ -27,11 +28,13 @@ public:
 	void OnRep_Defeats();
 	void AddToDefeats(int32 DefeatsAmount);
 	FOnDefeatsChanged OnDefeatsChanged;
-
+	
 private:
 	UPROPERTY(ReplicatedUsing=OnRep_Defeats)
 	int32 Defeats = 0;
 
+	
 public:
 	int32 GetDefeats()const{ return Defeats;}
+	
 };

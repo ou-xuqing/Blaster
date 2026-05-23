@@ -21,6 +21,9 @@ public:
 	virtual void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit) override;
 
 	virtual void BeginPlay() override;
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
 protected:
 	UPROPERTY(EditDefaultsOnly,Category="BulletData | RadiusDamage")
 	float MinDamageMagnitude = 0.2f;

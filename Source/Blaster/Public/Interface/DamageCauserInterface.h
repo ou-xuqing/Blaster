@@ -7,6 +7,23 @@
 #include "DamageCauserInterface.generated.h"
 
 USTRUCT(BlueprintType)
+struct FRadialDamageSpec
+{
+	GENERATED_BODY()
+	UPROPERTY(EditDefaultsOnly)
+	float MinDamageMagnitude = 0.2f;
+	
+	UPROPERTY(EditDefaultsOnly)
+	float DamageInnerRadius = 200.f;
+
+	UPROPERTY(EditDefaultsOnly)
+	float DamageOuterRadius = 500.f;
+	
+	UPROPERTY(EditDefaultsOnly)
+	float DamageFalloff = 1.f;
+};
+
+USTRUCT(BlueprintType)
 struct FDamageSpec
 {
 	GENERATED_BODY()
@@ -23,6 +40,9 @@ struct FDamageSpec
 	UPROPERTY(EditDefaultsOnly)
 	float ShieldMultiplier = 0.f;
 
+	UPROPERTY(EditDefaultsOnly)
+	FRadialDamageSpec RadialDamageSpec;
+	
 	bool IsValid() const
 	{
 		if (BaseDamage > 0.f && ArmorPenetration >= 0.f && ArmorPenetration <= 1.f && FleshMultiplier >= 0.f && ShieldMultiplier >= 0.f)
@@ -49,5 +69,5 @@ class BLASTER_API IDamageCauserInterface
 
 	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 public:
-	virtual FDamageSpec GetDamageSpec() = 0;
+	virtual FDamageSpec GetDamageSpec() const = 0;
 };

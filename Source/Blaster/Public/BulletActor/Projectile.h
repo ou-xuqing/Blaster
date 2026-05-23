@@ -10,6 +10,7 @@
 class UProjectileMovementComponent;
 class UBoxComponent;
 class USoundCue;
+class AWeapon;
 /*
  * 在服务器中产生子弹，复制到客户端
  */
@@ -26,10 +27,23 @@ public:
 
 	virtual void Destroyed() override;
 
-	virtual FDamageSpec GetDamageSpec() override;
+	virtual FDamageSpec GetDamageSpec() const override;
 	
 	UFUNCTION()
 	virtual void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse,const FHitResult& Hit);
+	
+	UPROPERTY(EditDefaultsOnly,Category="BulletData | Speed")
+	float InitialSpeed = 10000.f;
+
+	float GetDamage() const{return Damage;}
+	
+	bool bUseServerSideRewind = false;
+	FVector_NetQuantize TraceStart;
+	FVector_NetQuantize100 InitialVelocity;
+	UPROPERTY()
+	TObjectPtr<AWeapon> DamageCauserWeapon;
+	//用来区分是不是表现子弹
+	bool bCanApplyDamage = false;
 protected:
 	virtual void BeginPlay() override;
 
@@ -55,6 +69,7 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly,Category="BulletData | DamageSpec")
 	FDamageSpec DamageSpec;
+
 private:
 	UPROPERTY(EditAnywhere,Category="BulletData | DParticle")
 	TObjectPtr<UParticleSystem> Tracer;

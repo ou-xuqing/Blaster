@@ -11,18 +11,16 @@
  * 
  */
 UCLASS()
-class BLASTER_API AHitScanWeapon : public AWeapon,public IDamageCauserInterface
+class BLASTER_API AHitScanWeapon : public AWeapon
 {
 	GENERATED_BODY()
 public:
+	AHitScanWeapon();
 	virtual void WeaponFire(const FVector& HitTarget,bool bIsContinueFire) override;
-	virtual FDamageSpec GetDamageSpec() override;
+	virtual FDamageSpec GetDamageSpec() const override;
 private:
 	void WeaponTraceHit(const FVector& FireStartLocation,const FVector& FireEnd,FHitResult& HitResult);
 	void PlayHitEffects(const FVector& FireStartLocation,const FHitResult& HitResult);
-
-	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Damage")
-	float Damage = 10.f;
 
 	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Particle | Impact")
 	TObjectPtr<UParticleSystem> ImpactParticle;
@@ -38,7 +36,5 @@ private:
 
 	UPROPERTY(EditDefaultsOnly,Category="WeaponData | Sound | Impact")
 	TObjectPtr<USoundCue> ImpactSound;
-
-	UPROPERTY(EditDefaultsOnly,Category="WeaponData | DamageDate")
-	FDamageSpec DamageSpec;
+	
 };

@@ -9,6 +9,7 @@
 #include "Components/WidgetComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/BlasterPlayerController.h"
 
 // Sets default values
 AWeapon::AWeapon()
@@ -50,7 +51,7 @@ void AWeapon::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AWeapon,WeaponState);
-	DOREPLIFETIME(AWeapon,Ammo);
+	DOREPLIFETIME_CONDITION(AWeapon,bUseServerSideRewind,COND_OwnerOnly);
 }
 
 void AWeapon::EnableWeaponMeshRenderCustomDepth(bool bInEnable)
@@ -60,17 +61,14 @@ void AWeapon::EnableWeaponMeshRenderCustomDepth(bool bInEnable)
 		WeaponMesh->SetRenderCustomDepth(bInEnable && bUseOutLine);
 	}
 }
-
+//重叠在客户端触发是为了让玩家手感没有那么顿（到武器旁边就可以拾取），但是拾取武器必须要在服务器中触发
 void AWeapon::BeginPlay()
 {
 	Super::BeginPlay();
 	//HasAuthority函数就是检查localRole是不是Authority
-	if (HasAuthority())
-	{
-		Sphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-		Sphere->OnComponentBeginOverlap.AddDynamic(this,&AWeapon::OnSphereOverlap);
-		Sphere->OnComponentEndOverlap.AddDynamic(this,&AWeapon::OnSphereEndOverlap);
-	}
+	Sphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	Sphere->OnComponentBeginOverlap.AddDynamic(this,&AWeapon::OnSphereOverlap);
+	Sphere->OnComponentEndOverlap.AddDynamic(this,&AWeapon::OnSphereEndOverlap);
 	PickUpWidget->SetVisibility(false);
 }
 
@@ -95,6 +93,11 @@ void AWeapon::OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActo
 	}
 }
 
+void AWeapon::OnHighPingToChangeServerSideRewind(bool InChanged)
+{
+	bUseServerSideRewind = InChanged;
+}
+
 //本地执行，因为在多播中调用
 void AWeapon::WeaponFire(const FVector& HitTarget,bool bIsContinueFire)
 {
@@ -110,19 +113,22 @@ void AWeapon::WeaponFire(const FVector& HitTarget,bool bIsContinueFire)
 			GetWorld()->SpawnActor<ACasing>(CasingClass,AmmoLocation.GetLocation(),AmmoLocation.GetRotation().Rotator());
 		}
 	}
+	SpendRound();
 }
 
-FVector AWeapon::CalculateShotSpread(const FVector& Start,const FVector& Target,float AdditiveScatter)
+FVector AWeapon::CalculateShotSpread(const FVector& Target,float AdditiveScatter,bool bInContinueFire)
 {
-	const FVector ToTarget = (Target - Start).GetSafeNormal();
-	const FVector SphereCenter = Start + ToTarget * DistanceToSphere;
-
+	const FVector FireStartLocation = GetWeaponMesh()->GetSocketLocation("MuzzleFlash");
+	
+	const FVector ToTarget = (Target - FireStartLocation).GetSafeNormal();
+	const FVector SphereCenter = FireStartLocation + ToTarget * DistanceToSphere;
+	if (bInContinueFire) AdditiveScatter += WeaponAdditiveScatter;
 	const float CurrentScatterRadius = FMath::Max(0.f, SphereScatter + AdditiveScatter);
 	const FVector RandVec = UKismetMathLibrary::RandomUnitVector() * FMath::FRandRange(0.f, CurrentScatterRadius);
 	const FVector EndVec = SphereCenter + RandVec;
-	const FVector ToEndVec = (EndVec - Start).GetSafeNormal();
+	const FVector ToEndVec = (EndVec - FireStartLocation).GetSafeNormal();
 	
-	return ToEndVec;
+	return FVector(FireStartLocation + ToEndVec * 20000.f);
 }
 
 void AWeapon::SetWeaponState(EWeaponState InState)
@@ -142,14 +148,22 @@ void AWeapon::SetWeaponState(EWeaponState InState)
 			WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 			WeaponMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 		}
+		if (ABlasterCharacter* OwnCharacter = Cast<ABlasterCharacter>(GetOwner()))
+		{
+			if (ABlasterPlayerController* OwnController = Cast<ABlasterPlayerController>(OwnCharacter->GetOwner()))
+			{
+				if (HasAuthority())
+				{
+					OwnController->OnHighPing.AddUniqueDynamic(this,&AWeapon::OnHighPingToChangeServerSideRewind);
+				}
+			}
+		}
 	}
 	if (WeaponState == EWeaponState::Ews_Dropped)
 	{
-		if (HasAuthority())
-		{
-			//在服务器中启动球形碰撞（因为该碰撞只在服务器中绑定函数）
-			Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-		}
+		//在服务器中启动球形碰撞（因为该碰撞只在服务器中绑定函数）
+		Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+
 		EnableWeaponMeshRenderCustomDepth(true);
 		//设置顺序不能乱，因为会警告。后面设置Channels是为了SMG
 		WeaponMesh->SetEnableGravity(true);
@@ -158,6 +172,16 @@ void AWeapon::SetWeaponState(EWeaponState InState)
 		WeaponMesh->SetCollisionResponseToAllChannels(ECR_Block);
 		WeaponMesh->SetCollisionResponseToChannel(ECC_Camera,ECR_Ignore);
 		WeaponMesh->SetCollisionResponseToChannel(ECC_Pawn,ECR_Ignore);
+		if (ABlasterCharacter* OwnCharacter = Cast<ABlasterCharacter>(GetOwner()))
+		{
+			if (ABlasterPlayerController* OwnController = Cast<ABlasterPlayerController>(OwnCharacter->GetOwner()))
+			{
+				if (HasAuthority() && OwnController->OnHighPing.IsBound())
+				{
+					OwnController->OnHighPing.RemoveDynamic(this,&AWeapon::OnHighPingToChangeServerSideRewind);
+				}
+			}
+		}
 	}
 }
 
@@ -189,6 +213,7 @@ void AWeapon::OnRep_WeaponState()
 		WeaponMesh->SetEnableGravity(false);
 		WeaponMesh->SetSimulatePhysics(false);
 		WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		EnableWeaponMeshRenderCustomDepth(false);
 		if (WeaponType == EWeaponType::Ewt_Smg)
 		{
@@ -206,6 +231,7 @@ void AWeapon::OnRep_WeaponState()
 		WeaponMesh->SetCollisionResponseToAllChannels(ECR_Block);
 		WeaponMesh->SetCollisionResponseToChannel(ECC_Camera,ECR_Ignore);
 		WeaponMesh->SetCollisionResponseToChannel(ECC_Pawn,ECR_Ignore);
+		Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	}
 }
 
@@ -225,15 +251,77 @@ void AWeapon::BroadcastAmmoChangedToOwner(bool bDroppedWeapon)
 	}
 	
 }
-
+/*
+ * 换弹预测，AddSequence主要是给霰弹枪用的，因为他会一发一发的装
+ */
 void AWeapon::AddAmmo(int32 InAmmo)
 {
 	Ammo = FMath::Clamp(Ammo + InAmmo,0,MagCapacity);
 	BroadcastAmmoChangedToOwner();
+	if (HasAuthority())
+	{
+		ClientAddAmmo(Ammo);
+	}else
+	{
+		if (ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(GetOwner()))
+		{
+			if (BlasterCharacter->IsLocallyControlled())
+			{
+				++AddSequence;
+			}
+		}
+	}
 }
 
-void AWeapon::OnRep_Ammo()
+//客户端先做预测，减少弹药。然后等到服务器的ClientRPC传递权威值后再进行正确的修改
+void AWeapon::SpendRound()
 {
+	Ammo = FMath::Clamp(Ammo - 1,0,MagCapacity);
+	BroadcastAmmoChangedToOwner();
+	if (HasAuthority())
+	{
+		ClientUpdateAmmo(Ammo);
+	}else
+	{
+		//只有非服务器并且枪械的所有者是本地控制的玩家时，Sequence才会增加。否则，当服务器使用这把枪开枪时，其他客户端中这把枪由于不是服务器但也需要模拟开枪(因为开枪是多播RPC)，所以Sequence也会增加。
+		if (ABlasterCharacter* BlasterCharacter = Cast<ABlasterCharacter>(GetOwner()))
+		{
+			if (BlasterCharacter->IsLocallyControlled())
+			{
+				++SpendSequence;
+			}
+		}
+	}
+}
+/*
+ * 先将权威值给本地Ammo
+ * 然后减少一次Sequence(请求)
+ * 再模拟当前的子弹消耗，如果不这样在高延迟下会发生回弹
+ * SpendSequence用来记录客户端还未同步的但已经减少的弹药
+ * AddSequence用来记录客户端还未同步的但已经增加的弹药
+ * 当存在两种变量影响子弹时，都需要考虑到，所以计算当前弹药时，需要 + AddSequence - SpendSequence
+ */
+void AWeapon::ClientUpdateAmmo_Implementation(int32 ServerAmmo)
+{
+	if (HasAuthority()) return;
+	Ammo = ServerAmmo;
+	--SpendSequence;
+	
+	Ammo = Ammo - SpendSequence + AddSequence;
+	BroadcastAmmoChangedToOwner();
+}
+
+/*
+ * 由于ClientRPC只会发给持有者客户端，所以在持有者客户端和服务器中有着该武器的最新弹药
+ * 但是其他客户端上就没有，这就引出了ClientSyncAmmo这个函数
+ */
+void AWeapon::ClientAddAmmo_Implementation(int32 ServerAmmo)
+{
+	if (HasAuthority()) return;
+	Ammo = ServerAmmo;
+
+	--AddSequence;
+	Ammo = FMath::Clamp(Ammo + AddSequence - SpendSequence,0,MagCapacity);
 	BroadcastAmmoChangedToOwner();
 	if (AmmoIsFull())
 	{
@@ -241,14 +329,20 @@ void AWeapon::OnRep_Ammo()
 		{
 			BlasterCharacter->JumpToShotGunEnd();
 		}
-		
 	}
 }
-
-//子类中调用，因为生成弹药在服务器中
-void AWeapon::SpendRound()
+/*
+ * 因为Ammo已经不是复制变量了
+ * 换弹的时候，Ammo变化不会主动的复制到其他客户端中
+ * 所以在装备武器时需要主动广播一个客户端RPC告诉对应客户端
+ * 虽然Weapon是复制变量，但是只是这个对象存在、位置、Owner、以及你显式声明要复制的属性才会复制
+ */
+void AWeapon::ClientSyncAmmo_Implementation(int32 ServerAmmo)
 {
-	Ammo = FMath::Clamp(Ammo - 1,0,MagCapacity);
+	if (HasAuthority()) return;
+	Ammo = ServerAmmo;
+	SpendSequence = 0;
+	AddSequence = 0;
 	BroadcastAmmoChangedToOwner();
 }
 

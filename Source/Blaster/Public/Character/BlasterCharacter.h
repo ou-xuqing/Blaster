@@ -10,6 +10,8 @@
 #include "BlasterComponents/CombateState.h"
 #include "BlasterCharacter.generated.h"
 
+class ULagCompensationComponent;
+class UBoxComponent;
 //枚举当前状态，是否需要转向（鼠标向左或右移动过大）
 UENUM(BlueprintType)
 enum class ETurningInPlace : uint8
@@ -143,6 +145,10 @@ public:
 
 	void SpawnDefaultWeapon();
 
+	UPROPERTY()
+	TMap<FName,UBoxComponent*> BoxComponentInfo;
+
+	float GetHitBoneDamageMultiply(FName BoneName);
 protected:
 	virtual void BeginPlay() override;
 
@@ -168,6 +174,54 @@ protected:
 	void ReceiveDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
 
 	void ElimTimerFinished();
+
+	//hitBox,给服务器ReWind用
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Head;
+
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Pelvis;
+
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Spine_02;
+
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Spine_03;
+
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> UpperArm_R;
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> UpperArm_L;
+
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> LowerArm_R;
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> LowerArm_L;
+
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Hand_R;
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Hand_L;
+
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Backpack;
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Blanket;
+
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Thigh_L;
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Thigh_R;
+
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Calf_R;
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Calf_L;
+
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Foot_R;
+	UPROPERTY(EditDefaultsOnly)
+	TObjectPtr<UBoxComponent> Foot_L;
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Camera")
 	TObjectPtr<class USpringArmComponent> SpringArm;
@@ -182,6 +236,9 @@ private:
 	TObjectPtr<UCombatComponent> CombatComponent;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UBuffComponent> BuffComponent;
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<ULagCompensationComponent> LagCompensationComponent;
+
 	
 	UPROPERTY(ReplicatedUsing = OnRep_OverlappingWeapon)
 	TObjectPtr<AWeapon> OverlappingWeapon;
@@ -276,6 +333,8 @@ public:
 	UCombatComponent* GetCombatComponent() const { return CombatComponent;}
 
 	UBuffComponent* GetBuffComponent() const { return BuffComponent;}
+
+	ULagCompensationComponent* GetLagCompensationComponent() const { return LagCompensationComponent; }
 	
 	float GetAO_Yaw() const { return AO_Yaw; }
 	float GetAO_Pitch() const { return AO_Pitch; }
@@ -302,5 +361,5 @@ public:
 	int32 GetStartingGrenadeAmount() const {return CombatComponent ? CombatComponent->StartingGrenade : 0;}
 	int32 GetCurrentGrenadeAmount() const {return CombatComponent ? CombatComponent->CurrentGrenade : 0;}
 
-
+	bool GetLocallyReload() const { return CombatComponent ? CombatComponent->GetLocallyIsReload() : false;}
 };
