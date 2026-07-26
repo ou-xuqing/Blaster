@@ -41,6 +41,7 @@ class BLASTER_API ABlasterHUD : public AHUD
 	GENERATED_BODY()
 public:
 	virtual void DrawHUD() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	void DrawCrossHairInCenter(UTexture2D* Texture,FVector2D Center,FVector2D Spread = FVector2D::ZeroVector,FLinearColor CrosshairColor = FLinearColor::White);
 	void SetCrosshairPackage(FCrosshairPackage InPackage){CrosshairPackage = InPackage;}
 
@@ -54,6 +55,8 @@ public:
 	void HideAnnouncementWidget();
 
 	void HideOverlayWidget();
+
+	void ClearHUDWidgets();
 	
 	UPROPERTY()
 	TObjectPtr<UAnnouncementWidget> AnnouncementWidget;

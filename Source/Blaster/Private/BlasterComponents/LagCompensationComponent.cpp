@@ -350,7 +350,6 @@ FServerSideRewindResult ULagCompensationComponent::ProjectileConfirmHit(ABlaster
 			{
 				if (HitBoxComponentInfo.Value == HitComponent)
 				{
-					DrawDebugBox(World,HitComponent->GetComponentLocation(),HitComponent->GetScaledBoxExtent(),FColor::Red,false,5.f);
 					ResetHitBox(HitCharacter,CurrentBoxPosition);
 					SetCharacterMeshCollision(HitCharacter,ECollisionEnabled::QueryAndPhysics);
 					return FServerSideRewindResult{true,HitBoxComponentInfo.Key};

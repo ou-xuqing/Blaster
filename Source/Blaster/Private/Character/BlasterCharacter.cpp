@@ -166,7 +166,11 @@ void ABlasterCharacter::SpawnDefaultWeapon()
 	if ( BlasterGameMode && World && CombatComponent && DefaultWeapon)
 	{
 		AWeapon* Weapon = World->SpawnActor<AWeapon>(DefaultWeapon);
-		CombatComponent->EquipWeapon(Weapon);
+		if (Weapon)
+		{
+			Weapon->SetDestroyOnElim(true);
+			CombatComponent->EquipWeapon(Weapon);
+		}
 	}
 }
 
@@ -952,17 +956,24 @@ void ABlasterCharacter::Elim()
 {
 	if (CombatComponent)
 	{
-		if (CombatComponent->EquippedWeapon)
+		const auto HandleWeaponOnElim = [](AWeapon* Weapon)
 		{
-			//死亡时丢弃武器，后面设为nullptr只是保障
-			CombatComponent->EquippedWeapon->DropWeapon(FVector(0.f,0.f,0.f));
-			CombatComponent->EquippedWeapon = nullptr;
-		}
-		if (CombatComponent->SecondaryWeapon)
-		{
-			CombatComponent->SecondaryWeapon->DropWeapon(FVector(0.f,0.f,0.f));
-			CombatComponent->SecondaryWeapon = nullptr;
-		}
+			if (Weapon == nullptr) return;
+
+			if (Weapon->ShouldDestroyOnElim())
+			{
+				Weapon->Destroy();
+			}
+			else
+			{
+				Weapon->DropWeapon(FVector::ZeroVector);
+			}
+		};
+
+		HandleWeaponOnElim(CombatComponent->EquippedWeapon);
+		HandleWeaponOnElim(CombatComponent->SecondaryWeapon);
+		CombatComponent->EquippedWeapon = nullptr;
+		CombatComponent->SecondaryWeapon = nullptr;
 	}
 	MulticastElim();
 	GetWorldTimerManager().SetTimer(

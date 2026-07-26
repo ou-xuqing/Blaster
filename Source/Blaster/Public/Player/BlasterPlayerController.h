@@ -40,6 +40,8 @@ public:
 	void TryUpdateAnnouncementText();
 
 	void BindGameStateTopScorePlayers();
+	void SyncMatchState();
+	void ReturnToMainMenuAfterSessionCleanup();
 
 	void CheckCurrentPing(float DeltaTime);
 	
@@ -81,6 +83,12 @@ protected:
 	void ClientJoinMidGame(FName InMatchState,float InWarmupTime,float InMatchTime,float InLevelStartTime,float InCooldownTime);
 
 private:
+	UFUNCTION(Client,Reliable)
+	void ClientReturnToMainMenuAfterSessionCleanup();
+
+	UFUNCTION()
+	void OnDestroySessionForReturnToMenu(bool bWasSuccessful);
+
 	void HandleMatchState();
 	void HandleCooldownTime();
 	ABlasterHUD* GetBlasterHUD();
@@ -96,6 +104,8 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<ABlasterGameState> CachedGameState;
+
+	bool bWaitingForSessionCleanup = false;
 	
 	UPROPERTY(EditDefaultsOnly,Category="Input")
 	TObjectPtr<UInputMappingContext> InputContext;

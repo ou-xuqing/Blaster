@@ -486,7 +486,7 @@ void UCombatComponent::ServerShotGunFire_Implementation(const TArray<FVector_Net
 
 void UCombatComponent::MulticastWeaponFire_Implementation(const FVector_NetQuantize& HitTarget,bool bInContinueFire)
 {
-	//服务器控制的角色listen-server不要执行第二次
+	//请求开火的客户端不要执行第二次
 	if (BlasterCharacter && BlasterCharacter->IsLocallyControlled() && !BlasterCharacter->HasAuthority()) return;
 	LocalWeaponFire(HitTarget,bInContinueFire);
 }

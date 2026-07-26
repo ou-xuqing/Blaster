@@ -105,6 +105,9 @@ public:
 
 	virtual FDamageSpec GetDamageSpec() const override {return DamageSpec;}
 	virtual float GetDamage() const {return Damage;}
+
+	void SetDestroyOnElim(bool bInDestroyOnElim) { bDestroyOnElim = bInDestroyOnElim; }
+	bool ShouldDestroyOnElim() const { return bDestroyOnElim; }
 protected:
 	virtual void BeginPlay() override;
 	
@@ -147,10 +150,15 @@ protected:
 
 	UPROPERTY(Replicated,EditAnywhere,Category="LagCompensation")
 	bool bUseServerSideRewind = false;
+
+	UPROPERTY(Replicated,EditAnywhere,Category="LagCompensation")
+	bool bSupportServerSideRewind = true;
 	
 	UPROPERTY(EditAnywhere,Category="WeaponData | Damage")
 	float WeaponAdditiveScatter = 10.f;
 private:	
+	// 出生时自动生成的武器在持有者死亡时直接销毁，不作为掉落物保留。
+	bool bDestroyOnElim = false;
 
 	UPROPERTY(VisibleAnywhere,Category="Weapon")
 	TObjectPtr<USkeletalMeshComponent> WeaponMesh;

@@ -42,9 +42,16 @@ void ABlasterGameMode::Tick(float DeltaTime)
 	}else if (MatchState == MatchState::Cooldown)
 	{
 		CountdownTime = CooldownTime - GetWorld()->GetTimeSeconds() + LevelStartTime + WarmupTime + MatchTime;
-		if (CountdownTime <= 0.f)
+		if (CountdownTime <= 0.f && !bReturningToMainMenu)
 		{
-			RestartGame();
+			bReturningToMainMenu = true;
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				if (ABlasterPlayerController* BlasterPlayerController = Cast<ABlasterPlayerController>(*It))
+				{
+					BlasterPlayerController->ReturnToMainMenuAfterSessionCleanup();
+				}
+			}
 		}
 	}
 }
@@ -64,6 +71,16 @@ void ABlasterGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 	LevelStartTime = GetWorld()->GetTimeSeconds();
+
+	// 从 Lobby 无缝旅行过来的 PlayerController 不会再次执行 BeginPlay，
+	// 等 GameMode 的比赛时间初始化完成后，主动为所有已有玩家重新同步。
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (ABlasterPlayerController* BlasterPlayerController = Cast<ABlasterPlayerController>(*It))
+		{
+			BlasterPlayerController->SyncMatchState();
+		}
+	}
 }
 
 //ReceiveDamage中生命值为0时调用，所以只在服务器中触发

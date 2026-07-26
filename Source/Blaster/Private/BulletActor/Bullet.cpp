@@ -100,7 +100,6 @@ void ABullet::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrim
 			}
 		}
 	}
-	DrawDebugSphere(GetWorld(),GetActorLocation(),5.f,-1,FColor::Red,false,10.f);
 	if (WhipSound && AudioComponent)
 	{
 		AudioComponent->Stop();

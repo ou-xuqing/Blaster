@@ -9,7 +9,9 @@
 #include "Game/BlasterGameMode.h"
 #include "Game/BlasterGameState.h"
 #include "GameFramework/GameMode.h"
+#include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
+#include "MultiplayerSessionsSubsystem.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/BlasterPlayerState.h"
 #include "UI/HUD/BlasterHUD.h"
@@ -420,6 +422,13 @@ ABlasterHUD* ABlasterPlayerController::GetBlasterHUD()
 
 void ABlasterPlayerController::ServerCheckMatchState_Implementation()
 {
+	SyncMatchState();
+}
+
+void ABlasterPlayerController::SyncMatchState()
+{
+	if (!HasAuthority()) return;
+
 	if (ABlasterGameMode* BlasterGameMode = Cast<ABlasterGameMode>(UGameplayStatics::GetGameMode(this)))
 	{
 		WarmupTime = BlasterGameMode->WarmupTime;
@@ -432,6 +441,50 @@ void ABlasterPlayerController::ServerCheckMatchState_Implementation()
 		{
 			BlasterHUD->InitAnnouncementWidget();
 		}
+	}
+}
+
+void ABlasterPlayerController::ReturnToMainMenuAfterSessionCleanup()
+{
+	if (!HasAuthority()) return;
+	ClientReturnToMainMenuAfterSessionCleanup();
+}
+
+void ABlasterPlayerController::ClientReturnToMainMenuAfterSessionCleanup_Implementation()
+{
+	if (!IsLocalController() || bWaitingForSessionCleanup) return;
+
+	bWaitingForSessionCleanup = true;
+	if (UGameInstance* GameInstance = GetWorld()->GetGameInstance())
+	{
+		if (UMultiplayerSessionsSubsystem* SessionsSubsystem = GameInstance->GetSubsystem<UMultiplayerSessionsSubsystem>())
+		{
+			SessionsSubsystem->OnMultiplayerDestroySessionComplete.AddUniqueDynamic(
+				this, &ABlasterPlayerController::OnDestroySessionForReturnToMenu);
+			SessionsSubsystem->DestroySession();
+			return;
+		}
+	}
+
+	OnDestroySessionForReturnToMenu(false);
+}
+
+void ABlasterPlayerController::OnDestroySessionForReturnToMenu(bool bWasSuccessful)
+{
+	if (UGameInstance* GameInstance = GetWorld()->GetGameInstance())
+	{
+		if (UMultiplayerSessionsSubsystem* SessionsSubsystem = GameInstance->GetSubsystem<UMultiplayerSessionsSubsystem>())
+		{
+			SessionsSubsystem->OnMultiplayerDestroySessionComplete.RemoveDynamic(
+				this, &ABlasterPlayerController::OnDestroySessionForReturnToMenu);
+		}
+
+		bWaitingForSessionCleanup = false;
+		if (ABlasterHUD* HUD = GetBlasterHUD())
+		{
+			HUD->ClearHUDWidgets();
+		}
+		GameInstance->ReturnToMainMenu();
 	}
 }
 
@@ -452,6 +505,19 @@ void ABlasterPlayerController::ClientJoinMidGame_Implementation(FName InMatchSta
 void ABlasterPlayerController::SetGameTime()
 {
 	int32 TimeLeft = 0;
+	// 监听服务器的 PlayerController 可能早于 GameMode 执行 BeginPlay，
+	// 此时 ServerCheckMatchState 会缓存尚未初始化的 LevelStartTime（0）。
+	// 服务器本地计算倒计时时始终读取权威 GameMode 的最新开始时间。
+	if (HasAuthority())
+	{
+		if (const ABlasterGameMode* BlasterGameMode = GetWorld()->GetAuthGameMode<ABlasterGameMode>())
+		{
+			WarmupTime = BlasterGameMode->WarmupTime;
+			MatchTime = BlasterGameMode->MatchTime;
+			CooldownTime = BlasterGameMode->CooldownTime;
+			LevelStartTime = BlasterGameMode->LevelStartTime;
+		}
+	}
 	const float CurrentTime = HasAuthority() ? GetWorld()->GetTimeSeconds() : GetServerTime();
 	//MatchTime是自定义的，用他减去开始游戏的时间就获得了剩余时间
 	if (MatchState == MatchState::WaitingToStart)

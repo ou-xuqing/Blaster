@@ -54,6 +54,6 @@ void UAnnouncementWidget::SetAnnounceText(TArray<FString> TopScorePlayersName)
 
 void UAnnouncementWidget::SetMatchStateText()
 {
-	FString MatchStateText = FString::Printf(TEXT("NewGame Will Begin:"));
+	FString MatchStateText = FString::Printf(TEXT("Game Will End:"));
 	Text_MatchState->SetText(FText::FromString(MatchStateText));
 }

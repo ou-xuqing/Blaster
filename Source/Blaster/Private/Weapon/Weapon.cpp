@@ -95,7 +95,7 @@ void AWeapon::OnSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActo
 
 void AWeapon::OnHighPingToChangeServerSideRewind(bool InChanged)
 {
-	bUseServerSideRewind = InChanged;
+	bUseServerSideRewind = bSupportServerSideRewind && InChanged;
 }
 
 //本地执行，因为在多播中调用

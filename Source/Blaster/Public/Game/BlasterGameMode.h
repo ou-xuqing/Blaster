@@ -41,6 +41,7 @@ public:
 	float MatchTime = 120.f;
 	UPROPERTY(EditDefaultsOnly,Category="MatchState")
 	float CooldownTime = 10.f;
+	bool bReturningToMainMenu = false;
 	
 protected:
 	virtual void BeginPlay() override;

@@ -43,6 +43,12 @@ void ABlasterHUD::DrawHUD()
 	}
 }
 
+void ABlasterHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	ClearHUDWidgets();
+	Super::EndPlay(EndPlayReason);
+}
+
 void ABlasterHUD::DrawCrossHairInCenter(UTexture2D* Texture, FVector2D Center,FVector2D Spread,FLinearColor CrosshairColor)
 {
 	//获取贴图长宽
@@ -116,5 +122,20 @@ void ABlasterHUD::HideAnnouncementWidget()
 	if (IsValid(AnnouncementWidget))
 	{
 		AnnouncementWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
+}
+
+void ABlasterHUD::ClearHUDWidgets()
+{
+	if (IsValid(OverlayWidget))
+	{
+		OverlayWidget->RemoveFromParent();
+		OverlayWidget = nullptr;
+	}
+
+	if (IsValid(AnnouncementWidget))
+	{
+		AnnouncementWidget->RemoveFromParent();
+		AnnouncementWidget = nullptr;
 	}
 }
